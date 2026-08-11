@@ -1,0 +1,120 @@
+import { z } from "zod";
+
+export const signupValidation = {
+  body: z.object({
+    email: z
+      .string({ message: "Email is required" })
+      .email("Please enter a valid email address"),
+
+    password: z
+      .string({ message: "Password is required" })
+      .min(8, "Password must be at least 8 characters long")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+      .regex(/[0-9]/, "Password must contain at least one number"),
+
+    fullName: z
+      .string({ message: "Full name is required" })
+      .min(2, "Full name must be at least 2 characters")
+      .max(100, "Full name cannot exceed 100 characters")
+      .trim(),
+  }),
+};
+
+export const verifyOTPValidation = {
+  body: z.object({
+    email: z
+      .string({ message: "Email is required" })
+      .email("Please enter a valid email address"),
+
+    otp: z
+      .string({ message: "OTP code is required" })
+      .length(6, "OTP must be exactly 6 digits")
+      .regex(/^\d+$/, "OTP must contain only numbers"),
+  }),
+};
+
+export const loginValidation = {
+  body: z.object({
+    email: z
+      .string({ message: "Email is required" })
+      .email("Please enter a valid email address"),
+
+    password: z
+      .string({ message: "Password is required" })
+      .min(1, "Password cannot be empty"),
+  }),
+};
+
+export const forgotPasswordValidation = {
+  body: z.object({
+    email: z
+      .string({ message: "Email is required" })
+      .email("Please enter a valid email address"),
+  }),
+};
+
+export const verifyForgotPasswordOTPValidation = {
+  body: z.object({
+    email: z
+      .string({ message: "Email is required" })
+      .email("Please enter a valid email address"),
+
+    otp: z
+      .string({ message: "OTP code is required" })
+      .length(6, "OTP must be exactly 6 digits")
+      .regex(/^\d+$/, "OTP must contain only numbers"),
+  }),
+};
+
+export const resetPasswordValidation = {
+  body: z.object({
+    resetToken: z
+      .string({ message: "Reset token is required" })
+      .min(1, "Invalid reset token"),
+
+    newPassword: z
+      .string({ message: "New password is required" })
+      .min(8, "Password must be at least 8 characters long")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+      .regex(/[0-9]/, "Password must contain at least one number"),
+  }),
+};
+
+export const changePasswordValidation = {
+  body: z.object({
+    oldPassword: z
+      .string({ message: "Current password is required" })
+      .min(1, "Current password cannot be empty"),
+
+    newPassword: z
+      .string({ message: "New password is required" })
+      .min(8, "Password must be at least 8 characters long")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+      .regex(/[0-9]/, "Password must contain at least one number"),
+  }),
+};
+
+export const resendOTPValidation = {
+  body: z.object({
+    email: z
+      .string({ message: "Email is required" })
+      .email("Please enter a valid email address"),
+  }),
+};
+
+export const refreshTokenValidation = {
+  body: z.object({
+    refreshToken: z
+      .string({ message: "Refresh token is required" })
+      .min(1, "Invalid refresh token"),
+  }),
+};
+
+export const logoutValidation = {
+  body: z.object({
+    refreshToken: z.string().optional(),
+  }),
+};

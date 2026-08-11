@@ -1,0 +1,529 @@
+import config from "../../config";
+import AppError from "../../errors/AppError";
+import { prisma } from "../../lib/prisma";
+import comparePassword from "../../utils/comparePassword";
+import { sendOTPEmail } from "../../utils/emailSender";
+import {
+  generateAccessToken,
+  generateRefreshToken,
+  generateResetToken,
+  revokeAllUserRefreshTokens,
+  revokeRefreshToken,
+  verifyRefreshToken,
+  verifyResetToken,
+} from "../../utils/generateToken";
+import hashPassword from "../../utils/hashPassword";
+import generateOTP from "../../utils/otpGenerator";
+
+type OTPType = "SIGNUP" | "FORGOT_PASSWORD";
+
+/* ============================= SIGNUP ============================= */
+const signup = async (payload: {
+  email: string;
+  password: string;
+  fullName: string;
+}) => {
+  const existingUser = await prisma.user.findUnique({
+    where: { email: payload.email },
+    select: { id: true, isVerified: true, isDeleted: true },
+  });
+
+  if (existingUser?.isDeleted) {
+    throw new AppError(
+      410,
+      "This account was previously deleted. Contact support.",
+    );
+  }
+
+  if (existingUser?.isVerified) {
+    throw new AppError(409, "An account with this email already exists");
+  }
+
+  let userId: string;
+  let isNewUser = false;
+
+  if (existingUser) {
+    userId = existingUser.id;
+    isNewUser = false;
+  } else {
+    const hashedPassword = await hashPassword(payload.password);
+
+    const newUser = await prisma.user.create({
+      data: {
+        email: payload.email,
+        password: hashedPassword,
+        fullName: payload.fullName,
+        role: "USER",
+        isVerified: false,
+        isActive: true,
+        isDeleted: false,
+      },
+      select: { id: true },
+    });
+
+    userId = newUser.id;
+    isNewUser = true;
+  }
+
+  // Invalidate all previous unused SIGNUP OTPs
+  await prisma.oTP.updateMany({
+    where: {
+      userId,
+      type: "SIGNUP",
+      isUsed: false,
+    },
+    data: { isUsed: true },
+  });
+
+  // Generate and save new OTP
+  const otp = generateOTP();
+
+  await prisma.oTP.create({
+    data: {
+      userId,
+      otp,
+      type: "SIGNUP",
+      expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
+      isUsed: false,
+    },
+  });
+
+  // Send email (fire and forget)
+  sendOTPEmail(payload.email, otp, "SIGNUP").catch((error) => {
+    console.error("Failed to send signup OTP email:", error);
+  });
+
+  return {
+    message: isNewUser
+      ? "Signup successful! Please check your email for verification OTP"
+      : "New verification OTP sent to your email",
+    email: payload.email,
+  };
+};
+
+/* ============================= VERIFY OTP (SIGNUP) ============================= */
+const verifyOTP = async (payload: { email: string; otp: string }) => {
+  const user = await prisma.user.findUnique({
+    where: { email: payload.email },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      role: true,
+      isActive: true,
+      isDeleted: true,
+    },
+  });
+
+  if (!user) throw new AppError(404, "User not found");
+  if (user.isDeleted) throw new AppError(410, "Account deleted");
+  if (!user.isActive) throw new AppError(403, "Account suspended");
+
+  const otpRecord = await prisma.oTP.findFirst({
+    where: {
+      userId: user.id,
+      otp: payload.otp,
+      type: "SIGNUP",
+      isUsed: false,
+      expiresAt: { gte: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!otpRecord) throw new AppError(400, "Invalid or expired OTP");
+
+  // Mark this OTP as used
+  await prisma.oTP.update({
+    where: { id: otpRecord.id },
+    data: { isUsed: true },
+  });
+
+  // Invalidate any other unused SIGNUP OTPs (defense in depth)
+  await prisma.oTP.updateMany({
+    where: {
+      userId: user.id,
+      type: "SIGNUP",
+      id: { not: otpRecord.id },
+      isUsed: false,
+    },
+    data: { isUsed: true },
+  });
+
+  // Verify the user
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { isVerified: true },
+  });
+
+  const accessToken = generateAccessToken({
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+  });
+
+  const refreshToken = await generateRefreshToken(user.id);
+
+  return {
+    accessToken,
+    refreshToken,
+    user: {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+    },
+  };
+};
+
+/* ============================= LOGIN ============================= */
+const login = async (payload: { email: string; password: string }) => {
+  const user = await prisma.user.findUnique({
+    where: { email: payload.email },
+    select: {
+      id: true,
+      email: true,
+      password: true,
+      fullName: true,
+      role: true,
+      isVerified: true,
+      isActive: true,
+      isDeleted: true,
+    },
+  });
+
+  if (!user || user.isDeleted)
+    throw new AppError(401, "Invalid email or password");
+  if (!user.isActive) throw new AppError(403, "Your account is suspended");
+
+  const isValid = await comparePassword(payload.password, user.password);
+  if (!isValid) throw new AppError(401, "Invalid email or password");
+
+  if (!user.isVerified)
+    throw new AppError(403, "Please verify your email first");
+
+  const accessToken = generateAccessToken({
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+  });
+
+  const refreshToken = await generateRefreshToken(user.id);
+
+  return {
+    accessToken,
+    refreshToken,
+    user: {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+    },
+  };
+};
+
+/* ============================= FORGOT PASSWORD (STEP 1) ============================= */
+const forgotPassword = async (email: string) => {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, isDeleted: true, isActive: true },
+  });
+
+  if (!user) throw new AppError(404, "No account found with this email");
+  if (user.isDeleted) throw new AppError(410, "This account has been deleted");
+  if (!user.isActive) throw new AppError(403, "Your account is suspended");
+
+  // Invalidate all previous unused FORGOT_PASSWORD OTPs
+  await prisma.oTP.updateMany({
+    where: {
+      userId: user.id,
+      type: "FORGOT_PASSWORD",
+      isUsed: false,
+    },
+    data: { isUsed: true },
+  });
+
+  const otp = generateOTP();
+
+  await prisma.oTP.create({
+    data: {
+      userId: user.id,
+      otp,
+      type: "FORGOT_PASSWORD",
+      expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
+      isUsed: false,
+    },
+  });
+
+  sendOTPEmail(email, otp, "FORGOT_PASSWORD").catch((error) => {
+    console.error("Failed to send forgot password OTP email:", error);
+  });
+
+  return {
+    message: "Password reset OTP sent to your email",
+    email,
+  };
+};
+
+/* ============================= VERIFY FORGOT PASSWORD OTP (STEP 2) ============================= */
+const verifyForgotPasswordOTP = async (payload: {
+  email: string;
+  otp: string;
+}) => {
+  const user = await prisma.user.findUnique({
+    where: { email: payload.email },
+    select: { id: true, email: true },
+  });
+
+  if (!user) throw new AppError(404, "User not found");
+
+  const otpRecord = await prisma.oTP.findFirst({
+    where: {
+      userId: user.id,
+      otp: payload.otp,
+      type: "FORGOT_PASSWORD",
+      isUsed: false,
+      expiresAt: { gte: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!otpRecord) throw new AppError(400, "Invalid or expired OTP");
+
+  // Mark as used + invalidate others
+  await prisma.oTP.update({
+    where: { id: otpRecord.id },
+    data: { isUsed: true },
+  });
+
+  await prisma.oTP.updateMany({
+    where: {
+      userId: user.id,
+      type: "FORGOT_PASSWORD",
+      id: { not: otpRecord.id },
+      isUsed: false,
+    },
+    data: { isUsed: true },
+  });
+
+  // Generate short-lived reset token
+  const resetToken = generateResetToken({ userId: user.id });
+
+  return {
+    message: "OTP verified successfully. You can now reset your password.",
+    resetToken,
+  };
+};
+
+/* ============================= RESET PASSWORD (STEP 3) ============================= */
+const resetPassword = async (payload: {
+  resetToken: string;
+  newPassword: string;
+}) => {
+  let decoded: any;
+  try {
+    decoded = verifyResetToken(payload.resetToken);
+  } catch (err) {
+    throw new AppError(400, "Invalid or expired reset token");
+  }
+
+  if (decoded.purpose !== "PASSWORD_RESET") {
+    throw new AppError(400, "Invalid reset token");
+  }
+
+  const hashed = await hashPassword(payload.newPassword);
+
+  await prisma.user.update({
+    where: { id: decoded.userId },
+    data: { password: hashed },
+  });
+
+  // Clean up all forgot-password OTPs
+  await prisma.oTP.deleteMany({
+    where: {
+      userId: decoded.userId,
+      type: "FORGOT_PASSWORD",
+    },
+  });
+
+  return {
+    message:
+      "Password reset successful. You can now log in with your new password.",
+  };
+};
+
+/* ============================= CHANGE PASSWORD ============================= */
+const changePassword = async (
+  userId: string,
+  oldPassword: string,
+  newPassword: string,
+) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, password: true },
+  });
+
+  if (!user) throw new AppError(404, "User not found");
+
+  const isValid = await comparePassword(oldPassword, user.password);
+  if (!isValid) throw new AppError(401, "Current password is incorrect");
+
+  const hashed = await hashPassword(newPassword);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: hashed },
+  });
+
+  return {
+    message: "Password changed successfully",
+  };
+};
+
+/* ============================= RESEND OTP ============================= */
+const resendOTP = async (email: string, type: OTPType) => {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      isDeleted: true,
+      isActive: true,
+      isVerified: true,
+    },
+  });
+
+  if (!user) throw new AppError(404, "No account found with this email");
+  if (user.isDeleted) throw new AppError(410, "This account has been deleted");
+  if (!user.isActive) throw new AppError(403, "Your account is suspended");
+
+  if (type === "SIGNUP" && user.isVerified) {
+    throw new AppError(400, "Your account is already verified");
+  }
+
+  // Invalidate all previous unused OTPs of this type
+  await prisma.oTP.updateMany({
+    where: {
+      userId: user.id,
+      type,
+      isUsed: false,
+    },
+    data: { isUsed: true },
+  });
+
+  const otp = generateOTP();
+
+  await prisma.oTP.create({
+    data: {
+      userId: user.id,
+      otp,
+      type,
+      expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
+      isUsed: false,
+    },
+  });
+
+  sendOTPEmail(email, otp, type).catch((error) => {
+    console.error("Failed to send OTP email:", error);
+  });
+
+  const context = type === "SIGNUP" ? "verification" : "password reset";
+  return {
+    message: `New ${context} OTP sent to your email`,
+    email,
+  };
+};
+
+/* ============================= REFRESH TOKEN ============================= */
+const refreshAccessToken = async (refreshToken: string) => {
+  // 1. Verify JWT token
+  let decoded: any;
+  try {
+    decoded = verifyRefreshToken(refreshToken);
+  } catch (err) {
+    throw new AppError(401, "Invalid or expired refresh token");
+  }
+
+  // 2. Check if token exists in database and is valid
+  const tokenRecord = await prisma.refreshToken.findUnique({
+    where: { id: decoded.tokenId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          isActive: true,
+          isDeleted: true,
+          isVerified: true,
+        },
+      },
+    },
+  });
+
+  if (!tokenRecord) {
+    throw new AppError(401, "Refresh token not found");
+  }
+
+  if (tokenRecord.isRevoked) {
+    throw new AppError(401, "Refresh token has been revoked");
+  }
+
+  if (tokenRecord.expiresAt < new Date()) {
+    throw new AppError(401, "Refresh token has expired");
+  }
+
+  // 3. Validate user
+  const user = tokenRecord.user;
+  if (!user) throw new AppError(404, "User not found");
+  if (user.isDeleted) throw new AppError(410, "Account deleted");
+  if (!user.isActive) throw new AppError(403, "Account suspended");
+  if (!user.isVerified) throw new AppError(403, "Account not verified");
+
+  // 4. Generate new access token
+  const accessToken = generateAccessToken({
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+  });
+
+  return {
+    accessToken,
+  };
+};
+
+/* ============================= LOGOUT ============================= */
+const logout = async (userId: string, refreshToken?: string) => {
+  if (refreshToken) {
+    try {
+      const decoded = verifyRefreshToken(refreshToken);
+      await revokeRefreshToken(decoded.tokenId);
+    } catch (err) {
+      // Token already invalid, just continue
+    }
+  }
+
+  return {
+    message: "Logged out successfully",
+  };
+};
+
+/* ============================= LOGOUT ALL DEVICES ============================= */
+const logoutAllDevices = async (userId: string) => {
+  await revokeAllUserRefreshTokens(userId);
+
+  return {
+    message: "Logged out from all devices successfully",
+  };
+};
+
+export const AuthService = {
+  signup,
+  verifyOTP,
+  login,
+  forgotPassword,
+  verifyForgotPasswordOTP,
+  resetPassword,
+  changePassword,
+  resendOTP,
+  refreshAccessToken,
+  logout,
+  logoutAllDevices,
+};
