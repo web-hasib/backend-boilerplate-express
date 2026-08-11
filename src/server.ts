@@ -1,7 +1,7 @@
 import app from "./app";
-import config from "./config";
-import { startTokenCleanupJob } from "./jobs/cleanupTokens";
-import { prisma } from "./lib/prisma";
+import config from "./app/config";
+import { startTokenCleanupJob } from "./app/jobs/cleanupTokens";
+import { prisma } from "./app/lib/prisma";
 import { seedAdmin } from "./seedSuperAdmin";
 
 const PORT = config.port;

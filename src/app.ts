@@ -1,10 +1,10 @@
 import express, { Application } from "express";
-import corsHandler from "./middlewares/corsHandler";
-import securityHeaders from "./middlewares/securityHeaders";
-import config from "./config";
-import router from "./routes";
-import notFoundHandler from "./middlewares/notFoundHandler";
-import globalErrorHandler from "./middlewares/globalErrorHandler";
+import corsHandler from "./app/middlewares/corsHandler";
+import securityHeaders from "./app/middlewares/securityHeaders";
+import config from "./app/config";
+import router from "./app/routes";
+import notFoundHandler from "./app/middlewares/notFoundHandler";
+import globalErrorHandler from "./app/middlewares/globalErrorHandler";
 
 const app: Application = express();
 

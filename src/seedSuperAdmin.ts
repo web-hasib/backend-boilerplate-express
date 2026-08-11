@@ -1,8 +1,8 @@
 import { UserRole } from "@prisma/client";
-import config from "./config";
-import hashPassword from "./utils/hashPassword";
-import { prisma } from "./lib/prisma";
-import comparePassword from "./utils/comparePassword";
+import config from "./app/config";
+import hashPassword from "./app/utils/hashPassword";
+import { prisma } from "./app/lib/prisma";
+import comparePassword from "./app/utils/comparePassword";
 
 export const seedAdmin = async (): Promise<void> => {
   try {
