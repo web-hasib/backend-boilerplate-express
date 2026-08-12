@@ -15,11 +15,16 @@ async function startServer() {
     // Start cleanup job for expired tokens and OTPs
     const cleanupIntervalId = startTokenCleanupJob();
 
-    // Seed admin automatically
-    await seedAdmin();
+    // Seed admin automatically (non-blocking for startup)
+    try {
+      await seedAdmin();
+    } catch (seedErr) {
+      console.warn("⚠️ Admin seeding warning:", seedErr);
+    }
 
     // Start server
-    const server = app.listen(PORT, () => {
+
+    const server = app.listen(Number(PORT), "0.0.0.0", () => {
       console.log(`🚀 Server is running on port ${PORT}`);
       console.log(`📦 Environment: ${config.env}`);
       console.log(`🏥 Server: ${config.backend_url}`);
@@ -58,7 +63,6 @@ async function startServer() {
     process.exit(1);
   }
 }
-
 
 process.on("unhandledRejection", (reason: unknown) => {
   console.error("❌ Unhandled Rejection:", reason);

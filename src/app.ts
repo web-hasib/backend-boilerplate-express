@@ -6,10 +6,12 @@ import config from "./app/config";
 import router from "./app/routes";
 import notFoundHandler from "./app/middlewares/notFoundHandler";
 import globalErrorHandler from "./app/middlewares/globalErrorHandler";
-
 import { apiRateLimiter } from "./app/middlewares/rateLimiter";
 
 const app: Application = express();
+
+// Trust reverse proxy (Nginx) for accurate client IP in rate limiters & headers
+app.set("trust proxy", 1);
 
 // === COMPRESSION & BODY PARSERS ===
 app.use(compression());
@@ -22,7 +24,7 @@ app.use(securityHeaders);
 app.use(apiRateLimiter);
 
 // === ROOT ===
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.status(200).json({
     success: true,
     message: "Welcome to Your API",

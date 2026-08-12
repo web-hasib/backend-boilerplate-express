@@ -93,40 +93,14 @@ export const seedAdmin = async (): Promise<void> => {
 
   } catch (error: unknown) {
     const err = error as Error & { code?: string };
-    console.error("❌ Admin seeding failed:", err.message);
 
-    // If there's a data inconsistency, try to fix it
-    if (err.code === "P2023") {
-      console.log("🔧 Attempting to fix data inconsistency...");
-      try {
-        // Delete all super admins and recreate
-        await prisma.user.deleteMany({
-          where: { role: UserRole.SUPER_ADMIN },
-        });
-
-        const hashedPassword = await hashPassword(config.admin.password);
-
-        await prisma.user.create({
-          data: {
-            email: config.admin.email,
-            password: hashedPassword,
-            fullName: config.admin.fullName,
-            role: UserRole.SUPER_ADMIN,
-            isVerified: true,
-            isActive: true,
-            isDeleted: false,
-          },
-        });
-        console.log(
-          `✅ Super Admin recreated successfully: ${config.admin.email}`,
-        );
-      } catch (fixError: unknown) {
-        const fixErr = fixError as Error;
-        console.error("❌ Failed to fix data:", fixErr.message);
-        throw fixError;
-      }
-    } else {
-      throw error;
+    // P2002: Unique constraint failed — another container replica created the admin simultaneously
+    if (err.code === "P2002") {
+      console.log("✅ Super Admin was created concurrently by another replica.");
+      return;
     }
+
+    console.error("❌ Admin seeding failed:", err.message);
   }
 };
+

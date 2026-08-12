@@ -33,8 +33,9 @@ COPY src ./src
 # Generate Prisma client (uses the schema in ./prisma/schema.prisma)
 RUN node_modules/.bin/prisma generate
 
-# Compile TypeScript → dist/
-RUN node_modules/.bin/tsc --project tsconfig.json
+# Bundle TypeScript with esbuild → dist/server.js
+RUN node_modules/.bin/esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --packages=external
+
 
 
 # =============================================================================
@@ -79,7 +80,8 @@ EXPOSE 5000
 # Health check — hits the root route which returns a 200 JSON response.
 # Start period gives Prisma time to connect on cold start.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD wget -qO- http://localhost:5000/ | grep -q '"success":true' || exit 1
+  CMD wget -qO- http://127.0.0.1:5000/ | grep -q '"success":true' || exit 1
+
 
 # dumb-init as PID 1 ensures SIGTERM/SIGINT are forwarded correctly to Node
 ENTRYPOINT ["dumb-init", "--"]

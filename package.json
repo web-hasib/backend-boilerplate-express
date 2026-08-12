@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --packages=external",
     "start": "node dist/server.js",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
@@ -27,6 +27,7 @@
     "@types/node": "^26.2.0",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.21.0",
+    "esbuild": "^0.28.2",
     "eslint": "^10.8.1",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.6",
