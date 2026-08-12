@@ -248,16 +248,25 @@ export const extractS3KeyFromUrl = (url: string): string | null => {
   if (!url) return null;
 
   try {
-    // Handle both formats:
-    // 1. https://bucket.s3.region.amazonaws.com/key
-    // 2. https://s3.region.amazonaws.com/bucket/key
     const urlObj = new URL(url);
     const pathname = urlObj.pathname.substring(1); // Remove leading /
+
+    // If path-style URL (s3.region.amazonaws.com/bucket/key), strip bucket name
+    if (
+      urlObj.hostname.startsWith("s3.") ||
+      urlObj.hostname.startsWith("s3-")
+    ) {
+      const parts = pathname.split("/");
+      return parts.slice(1).join("/");
+    }
+
+    // Virtual-hosted style (bucket.s3.region.amazonaws.com/key)
     return pathname;
   } catch {
     return null;
   }
 };
+
 
 /**
  * Generate presigned URL for temporary access (optional, for private files)

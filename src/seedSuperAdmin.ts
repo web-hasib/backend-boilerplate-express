@@ -12,8 +12,6 @@ export const seedAdmin = async (): Promise<void> => {
       throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD are required");
     }
 
-    const hashedPassword = await hashPassword(password);
-
     // Check if ANY super admin exists (not just by email)
     const existingSuperAdmin = await prisma.user
       .findFirst({
@@ -36,13 +34,13 @@ export const seedAdmin = async (): Promise<void> => {
         hasChanges = true;
       }
 
-      // Check if password needs update
+      // Only hash + compare password when necessary (bcrypt is ~300ms at cost 12)
       const passwordMatch = await comparePassword(
         password,
         existingSuperAdmin.password,
       );
       if (!passwordMatch) {
-        updates.password = hashedPassword;
+        updates.password = await hashPassword(password);
         hasChanges = true;
       }
 
@@ -62,7 +60,6 @@ export const seedAdmin = async (): Promise<void> => {
       }
 
       if (hasChanges) {
-        // Use Prisma update for PostgreSQL
         await prisma.user.update({
           where: { id: existingSuperAdmin.id },
           data: updates,
@@ -78,7 +75,8 @@ export const seedAdmin = async (): Promise<void> => {
         console.log(`✅ Super Admin already exists: ${email}`);
       }
     } else {
-      // No super admin exists, create one
+      // No super admin exists — hash password only when creating
+      const hashedPassword = await hashPassword(password);
       await prisma.user.create({
         data: {
           email,
@@ -92,6 +90,7 @@ export const seedAdmin = async (): Promise<void> => {
       });
       console.log(`✅ Super Admin created: ${email}`);
     }
+
   } catch (error: unknown) {
     const err = error as Error & { code?: string };
     console.error("❌ Admin seeding failed:", err.message);

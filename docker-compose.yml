@@ -1,0 +1,75 @@
+# Docker Compose — Production
+# Database is external (Supabase). This file manages only the application
+# container. No unnecessary services are added.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # target defaults to the final stage (runner) — explicit for clarity
+      target: runner
+    image: backend-api:latest
+    container_name: backend-api
+
+    restart: unless-stopped
+
+    ports:
+      # Expose only on localhost so a reverse proxy (nginx/Caddy/etc.)
+      # handles TLS termination and public traffic. Remove or change for
+      # environments where the container IS directly internet-facing.
+      - "127.0.0.1:5000:5000"
+
+    # All secrets and runtime config are supplied via environment variables.
+    # In production, replace this file reference with Docker Secrets or your
+    # platform's secret manager (e.g., AWS Secrets Manager, Vault, etc.).
+    # The .env file is NEVER copied into the image — it is read at runtime
+    # by Docker Compose only.
+    env_file:
+      - .env
+
+    # Override only non-secret, container-specific values here.
+    # Do NOT put secrets in this section.
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+    # Limit resource consumption to prevent a runaway process from taking
+    # down the host. Adjust values to match your server capacity.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+    # Write logs to stdout/stderr only (no file volumes needed).
+    # Use your platform's log driver (e.g., awslogs, fluentd) in production.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Drop all capabilities; the app does not need any Linux capabilities.
+    cap_drop:
+      - ALL
+
+    # Prevent privilege escalation inside the container
+    security_opt:
+      - no-new-privileges:true
+
+    # The container filesystem is read-only. /tmp is writable if Node or
+    # any dependency needs a temp directory.
+    read_only: true
+    tmpfs:
+      - /tmp

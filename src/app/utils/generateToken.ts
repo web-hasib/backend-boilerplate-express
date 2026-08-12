@@ -36,12 +36,35 @@ export const verifyAccessToken = (token: string): IAccessTokenPayload => {
   ) as IAccessTokenPayload;
 };
 
+/* ============================= HELPERS ============================= */
+/**
+ * Parse a JWT-style duration string (e.g. "7d", "24h", "30m", "60s") into milliseconds.
+ * Throws if the format is unrecognised so misconfiguration is caught at startup.
+ */
+const parseDurationMs = (duration: string): number => {
+  const match = duration.match(/^(\d+)(d|h|m|s)$/);
+  if (!match) {
+    throw new Error(
+      `Invalid JWT duration format: "${duration}". Use Nd / Nh / Nm / Ns (e.g. "7d").`,
+    );
+  }
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+  const multipliers: Record<string, number> = {
+    d: 86400000,
+    h: 3600000,
+    m: 60000,
+    s: 1000,
+  };
+  return value * multipliers[unit];
+};
+
 /* ============================= REFRESH TOKEN ============================= */
 export const generateRefreshToken = async (userId: string): Promise<string> => {
-  // Calculate expiry date
-  const expiresAt = new Date();
-  const expiryDays = parseInt(config.jwt.refresh_expires_in.replace("d", ""));
-  expiresAt.setDate(expiresAt.getDate() + expiryDays);
+  // Calculate expiry date using safe duration parser
+  const expiresAt = new Date(
+    Date.now() + parseDurationMs(config.jwt.refresh_expires_in),
+  );
 
   // Store in database
   const refreshTokenRecord = await prisma.refreshToken.create({
@@ -91,10 +114,11 @@ export const revokeAllUserRefreshTokens = async (
 };
 
 /* ============================= RESET TOKEN ============================= */
+// Uses a dedicated secret — never share with access or refresh tokens
 export const generateResetToken = (payload: { userId: string }): string => {
   return jwt.sign(
     { ...payload, purpose: "PASSWORD_RESET" } as IResetTokenPayload,
-    config.jwt.access_secret as Secret,
+    config.jwt.reset_secret as Secret,
     { expiresIn: "15m" }, // short-lived!
   );
 };
@@ -102,6 +126,6 @@ export const generateResetToken = (payload: { userId: string }): string => {
 export const verifyResetToken = (token: string): IResetTokenPayload => {
   return jwt.verify(
     token,
-    config.jwt.access_secret as Secret,
+    config.jwt.reset_secret as Secret,
   ) as IResetTokenPayload;
 };

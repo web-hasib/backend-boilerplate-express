@@ -30,6 +30,7 @@ model User {
   refreshTokens RefreshToken[]
 
   @@index([role, isDeleted, isActive])
+  @@index([isDeleted, createdAt(sort: Desc)])
   @@map("users")
 }
 

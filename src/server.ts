@@ -13,7 +13,7 @@ async function startServer() {
     console.log("✅ Database connected successfully");
 
     // Start cleanup job for expired tokens and OTPs
-    startTokenCleanupJob();
+    const cleanupIntervalId = startTokenCleanupJob();
 
     // Seed admin automatically
     await seedAdmin();
@@ -28,6 +28,9 @@ async function startServer() {
     // Graceful shutdown
     const gracefulShutdown = async (signal: string) => {
       console.log(`\n${signal} received. Shutting down gracefully...`);
+
+      // Stop the cleanup job from firing again during shutdown
+      clearInterval(cleanupIntervalId);
 
       server.close(async () => {
         console.log("✅ HTTP server closed");
@@ -55,6 +58,7 @@ async function startServer() {
     process.exit(1);
   }
 }
+
 
 process.on("unhandledRejection", (reason: unknown) => {
   console.error("❌ Unhandled Rejection:", reason);

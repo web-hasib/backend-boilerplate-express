@@ -16,7 +16,10 @@ export default {
     access_expires_in: process.env.JWT_ACCESS_EXPIRES_IN || "15m",
     refresh_secret: process.env.JWT_REFRESH_SECRET!,
     refresh_expires_in: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
+    // Separate secret for password-reset tokens — must NOT share with access tokens
+    reset_secret: process.env.JWT_RESET_SECRET!,
   },
+
 
   smtp: {
     host: process.env.SMTP_HOST || "smtp-relay.brevo.com",

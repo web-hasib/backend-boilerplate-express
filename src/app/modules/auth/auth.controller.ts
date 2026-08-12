@@ -8,12 +8,13 @@ const signup = catchAsync(async (req: Request, res: Response) => {
   const result = await AuthService.signup(req.body);
 
   sendResponse(res, {
-    statusCode: result.message.includes("new OTP") ? status.OK : status.CREATED,
+    statusCode: result.isNewUser ? status.CREATED : status.OK,
     success: true,
     message: result.message,
     data: { email: result.email },
   });
 });
+
 
 const verifyOTP = catchAsync(async (req: Request, res: Response) => {
   const result = await AuthService.verifyOTP(req.body);

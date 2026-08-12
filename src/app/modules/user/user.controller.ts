@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import catchAsync from "../../utils/catchAsync";
 import { UserService } from "./user.service";
 import sendResponse from "../../utils/sendResponse";
+import type { GetUsersQuery } from "./user.validation";
+
 
 const getProfile = catchAsync(async (req: Request, res: Response) => {
   const result = await UserService.getProfile(req.user!.userId);
@@ -59,17 +61,13 @@ const deleteProfileImage = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getAllUsers = catchAsync(async (req: Request, res: Response) => {
-  const filters = {
-    searchTerm: req.query.searchTerm as string,
-    role: req.query.role as string,
-  };
-  const options = {
-    page: req.query.page,
-    limit: req.query.limit,
-    sortBy: req.query.sortBy,
-    sortOrder: req.query.sortOrder,
-  };
-  const result = await UserService.getAllUsers(options, filters);
+  // req.query is Zod-validated and coerced by validateRequest.
+  // Double cast via unknown is required because Express types req.query as ParsedQs
+  // which doesn't structurally overlap with GetUsersQuery, but Zod guarantees the shape.
+  const result = await UserService.getAllUsers(
+    req.query as unknown as GetUsersQuery,
+  );
+
   sendResponse(res, {
     statusCode: 200,
     success: true,
@@ -78,6 +76,7 @@ const getAllUsers = catchAsync(async (req: Request, res: Response) => {
     data: result.data,
   });
 });
+
 
 const deleteUser = catchAsync(async (req: Request, res: Response) => {
   const result = await UserService.deleteUser(req.params.id as string);

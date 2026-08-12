@@ -11,26 +11,25 @@ type RequestValidation = {
 
 const validateRequest = (schema: RequestValidation) => {
   return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    // Build the validation object
-    const validationData = {
-      body: req.body,
-      query: req.query,
-      params: req.params,
-    };
-
-    // Parse each part if a schema is provided
+    // Parse each part and assign back to req so Zod transforms / defaults
+    // actually reach the controller (parseAsync result was previously discarded)
     if (schema.body) {
-      await schema.body.parseAsync(validationData.body);
+      req.body = await schema.body.parseAsync(req.body);
     }
     if (schema.query) {
-      await schema.query.parseAsync(validationData.query);
+      req.query = (await schema.query.parseAsync(
+        req.query,
+      )) as typeof req.query;
     }
     if (schema.params) {
-      await schema.params.parseAsync(validationData.params);
+      req.params = (await schema.params.parseAsync(
+        req.params,
+      )) as typeof req.params;
     }
 
     next();
   });
 };
+
 
 export default validateRequest;

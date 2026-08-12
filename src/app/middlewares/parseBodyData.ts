@@ -1,21 +1,21 @@
 import { Request, Response, NextFunction } from "express";
 import AppError from "../errors/AppError";
 
-const parseBodyData = async (
+const parseBodyData = (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction,
-) => {
+): void => {
   if (req.body && req.body.bodyData) {
     try {
-      // req.body = await JSON.parse(req.body.bodyData);
-      req.body = await JSON.parse(req.body.bodyData);
-      // console.log(req.body);
+      req.body = JSON.parse(req.body.bodyData); // JSON.parse is synchronous
     } catch {
-      return next(new AppError(400, "Invalid JSON format in bodyData"));
+      next(new AppError(400, "Invalid JSON format in bodyData"));
+      return;
     }
   }
   next();
 };
 
 export default parseBodyData;
+

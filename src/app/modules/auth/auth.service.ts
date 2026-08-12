@@ -2,7 +2,7 @@ import config from "../../config";
 import AppError from "../../errors/AppError";
 import { prisma } from "../../lib/prisma";
 import comparePassword from "../../utils/comparePassword";
-import { sendOTPEmail } from "../../utils/emailSender";
+import { sendOTPEmail } from "../../email/email.service";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -14,6 +14,7 @@ import {
 } from "../../utils/generateToken";
 import hashPassword from "../../utils/hashPassword";
 import generateOTP from "../../utils/otpGenerator";
+
 
 type OTPType = "SIGNUP" | "FORGOT_PASSWORD";
 
@@ -94,12 +95,14 @@ const signup = async (payload: {
   });
 
   return {
+    isNewUser,
     message: isNewUser
       ? "Signup successful! Please check your email for verification OTP"
       : "New verification OTP sent to your email",
     email: payload.email,
   };
 };
+
 
 /* ============================= VERIFY OTP (SIGNUP) ============================= */
 const verifyOTP = async (payload: { email: string; otp: string }) => {
@@ -272,10 +275,12 @@ const verifyForgotPasswordOTP = async (payload: {
 }) => {
   const user = await prisma.user.findUnique({
     where: { email: payload.email },
-    select: { id: true, email: true },
+    select: { id: true, email: true, isDeleted: true, isActive: true },
   });
 
   if (!user) throw new AppError(404, "User not found");
+  if (user.isDeleted) throw new AppError(410, "This account has been deleted");
+  if (!user.isActive) throw new AppError(403, "Your account is suspended");
 
   const otpRecord = await prisma.oTP.findFirst({
     where: {
@@ -314,6 +319,7 @@ const verifyForgotPasswordOTP = async (payload: {
     resetToken,
   };
 };
+
 
 /* ============================= RESET PASSWORD (STEP 3) ============================= */
 const resetPassword = async (payload: {

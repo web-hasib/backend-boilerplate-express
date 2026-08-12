@@ -1,20 +1,30 @@
 import AppError from "../../errors/AppError";
 import { prisma } from "../../lib/prisma";
-import calculatePagination from "../../utils/paginationHelper";
+import { Prisma, UserRole } from "@prisma/client";
+import { buildOffsetListMeta } from "../../utils/listQuery";
+
 import {
   deleteImageFromS3,
   extractS3KeyFromUrl,
   replaceImage,
 } from "../../utils/s3Uploader";
+import type { GetUsersQuery } from "./user.validation";
 
 interface IUpdateUserRequest {
   fullName?: string;
 }
 
-interface IUserFilterRequest {
-  searchTerm?: string;
-  role?: string;
-}
+// Shared upload options — update here once to affect all profile image operations
+const PROFILE_IMAGE_OPTIONS = {
+  folder: "profiles",
+  resize: {
+    width: 400,
+    height: 400,
+    fit: "cover" as const,
+  },
+  quality: 85,
+};
+
 
 const getProfile = async (userId: string) => {
   const user = await prisma.user.findUnique({
@@ -55,16 +65,11 @@ const updateProfile = async (
 
   // Handle profile image upload
   if (file) {
-    const uploadedImage = await replaceImage(user.profileImage, file, {
-      folder: "profiles",
-      resize: {
-        width: 400,
-        height: 400,
-        fit: "cover",
-      },
-      quality: 85,
-    });
-
+    const uploadedImage = await replaceImage(
+      user.profileImage,
+      file,
+      PROFILE_IMAGE_OPTIONS,
+    );
     updateData.profileImage = uploadedImage.url;
   }
 
@@ -131,15 +136,11 @@ const uploadProfileImage = async (
   }
 
   // Upload new image (and delete old one if exists)
-  const uploadedImage = await replaceImage(user.profileImage, file, {
-    folder: "profiles",
-    resize: {
-      width: 400,
-      height: 400,
-      fit: "cover",
-    },
-    quality: 85,
-  });
+  const uploadedImage = await replaceImage(
+    user.profileImage,
+    file,
+    PROFILE_IMAGE_OPTIONS,
+  );
 
   // Update database
   const updatedUser = await prisma.user.update({
@@ -157,24 +158,25 @@ const uploadProfileImage = async (
   return updatedUser;
 };
 
-const getAllUsers = async (
-  options: Record<string, unknown>,
-  filters: IUserFilterRequest,
-) => {
-  const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
+const getAllUsers = async (query: GetUsersQuery) => {
+  // All values are already validated, coerced, and defaulted by Zod
+  const { page, limit, sortBy, sortOrder, searchTerm, role } = query;
+  const skip = (page - 1) * limit;
 
-  const where: Record<string, unknown> = {};
+  // Build where clause — always exclude soft-deleted users
+  const where: Prisma.UserWhereInput = { isDeleted: false };
 
-  if (filters.searchTerm) {
+  if (searchTerm) {
     where.OR = [
-      { email: { contains: filters.searchTerm, mode: "insensitive" } },
-      { fullName: { contains: filters.searchTerm, mode: "insensitive" } },
+      { email: { contains: searchTerm, mode: "insensitive" } },
+      { fullName: { contains: searchTerm, mode: "insensitive" } },
     ];
   }
 
-  if (filters.role) {
-    where.role = filters.role;
+  if (role) {
+    where.role = role as UserRole;
   }
+
 
   const [users, total] = await Promise.all([
     prisma.user.findMany({
@@ -199,14 +201,16 @@ const getAllUsers = async (
   ]);
 
   return {
-    meta: { page, limit, total },
+    meta: buildOffsetListMeta(page, limit, total),
     data: users,
   };
+
+
 };
 
 const deleteUser = async (userId: string) => {
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: userId, isDeleted: false },
     select: { id: true, profileImage: true },
   });
 
@@ -214,17 +218,21 @@ const deleteUser = async (userId: string) => {
     throw new AppError(404, "User not found");
   }
 
-  // Delete profile image from S3 if exists
+  // Soft delete — preserves data integrity and audit trail.
+  // isDeleted flag is the pattern used everywhere else in this codebase.
+  // S3 image is also removed to avoid orphaned storage charges.
   if (user.profileImage) {
     const imageKey = extractS3KeyFromUrl(user.profileImage);
     if (imageKey) {
-      await deleteImageFromS3(imageKey);
+      deleteImageFromS3(imageKey).catch((err) =>
+        console.error("Failed to delete profile image on user delete:", err),
+      );
     }
   }
 
-  // Delete user (cascade will handle related records)
-  await prisma.user.delete({
+  await prisma.user.update({
     where: { id: userId },
+    data: { isDeleted: true, isActive: false },
   });
 
   return { message: "User deleted successfully" };
