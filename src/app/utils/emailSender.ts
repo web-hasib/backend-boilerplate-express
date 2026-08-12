@@ -1,4 +1,4 @@
-import axios from "axios";
+import nodemailer from "nodemailer";
 import config from "../config";
 
 interface IEmailOptions {
@@ -7,47 +7,34 @@ interface IEmailOptions {
   htmlContent: string;
 }
 
+const transporter = nodemailer.createTransport({
+  host: config.smtp.host,
+  port: config.smtp.port,
+  secure: config.smtp.port === 465,
+  auth: {
+    user: config.smtp.user,
+    pass: config.smtp.pass,
+  },
+});
+
 const sendEmail = async (options: IEmailOptions): Promise<void> => {
   try {
-    const response = await axios.post(
-      "https://api.brevo.com/v3/smtp/email",
-      {
-        sender: {
-          email: config.brevo.sender_email,
-          name: config.brevo.sender_name,
-        },
-        to: [{ email: options.to }],
-        subject: options.subject,
-        htmlContent: options.htmlContent,
-      },
-      {
-        headers: {
-          "api-key": config.brevo.api_key,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        timeout: 10_000,
-      },
-    );
+    const info = await transporter.sendMail({
+      from: `"${config.smtp.from_name}" <${config.smtp.from_email}>`,
+      to: options.to,
+      subject: options.subject,
+      html: options.htmlContent,
+    });
 
-    console.log(`Email sent successfully to ${options.to}`);
+    console.log(`Email sent successfully to ${options.to}. MessageId: ${info.messageId}`);
   } catch (error: any) {
-    console.error("Failed to send email via Brevo:", {
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
+    console.error("Failed to send email via SMTP:", {
       to: options.to,
       subject: options.subject,
       message: error.message,
     });
 
-    const errorMessage =
-      error.response?.data?.message ||
-      error.response?.data?.code ||
-      error.message ||
-      "Failed to send email";
-
-    throw new Error(`Email delivery failed: ${errorMessage}`);
+    throw new Error(`Email delivery failed: ${error.message || "Failed to send email"}`);
   }
 };
 
@@ -161,7 +148,7 @@ export const sendOTPEmail = async (
             <div class="footer">
               <p><strong>This is an automated message. Please do not reply to this email.</strong></p>
               <p>© ${new Date().getFullYear()} ${
-                config.brevo.sender_name
+                config.smtp.from_name
               }. All rights reserved.</p>
             </div>
           </div>

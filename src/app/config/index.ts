@@ -18,10 +18,13 @@ export default {
     refresh_expires_in: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
   },
 
-  brevo: {
-    api_key: process.env.BREVO_API_KEY!,
-    sender_email: process.env.BREVO_SENDER_EMAIL!,
-    sender_name: process.env.BREVO_SENDER_NAME!,
+  smtp: {
+    host: process.env.SMTP_HOST || "smtp-relay.brevo.com",
+    port: Number(process.env.SMTP_PORT) || 587,
+    user: process.env.SMTP_USER!,
+    pass: process.env.SMTP_PASS!,
+    from_email: process.env.SMTP_FROM_EMAIL!,
+    from_name: process.env.SMTP_FROM_NAME || "Hasan Jamil",
   },
 
   otp_expiry_minutes: Number(process.env.OTP_EXPIRY_MINUTES) || 5,
