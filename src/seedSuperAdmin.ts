@@ -23,7 +23,7 @@ export const seedAdmin = async (): Promise<void> => {
 
     if (existingSuperAdmin) {
       // Update the existing super admin
-      const updates: any = {};
+      const updates: Record<string, unknown> = {};
       let hasChanges = false;
 
       if (existingSuperAdmin.email !== email) {
@@ -92,11 +92,12 @@ export const seedAdmin = async (): Promise<void> => {
       });
       console.log(`✅ Super Admin created: ${email}`);
     }
-  } catch (error: any) {
-    console.error("❌ Admin seeding failed:", error.message);
+  } catch (error: unknown) {
+    const err = error as Error & { code?: string };
+    console.error("❌ Admin seeding failed:", err.message);
 
     // If there's a data inconsistency, try to fix it
-    if (error.code === "P2023") {
+    if (err.code === "P2023") {
       console.log("🔧 Attempting to fix data inconsistency...");
       try {
         // Delete all super admins and recreate
@@ -120,8 +121,9 @@ export const seedAdmin = async (): Promise<void> => {
         console.log(
           `✅ Super Admin recreated successfully: ${config.admin.email}`,
         );
-      } catch (fixError: any) {
-        console.error("❌ Failed to fix data:", fixError.message);
+      } catch (fixError: unknown) {
+        const fixErr = fixError as Error;
+        console.error("❌ Failed to fix data:", fixErr.message);
         throw fixError;
       }
     } else {

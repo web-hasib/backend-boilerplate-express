@@ -1,0 +1,6 @@
+dist
+node_modules
+coverage
+prisma/migrations
+.env
+package-lock.json

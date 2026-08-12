@@ -4,14 +4,25 @@ interface IErrorResponse {
   errorMessages: Array<{ path: string; message: string }>;
 }
 
-const handleClientError = (error: any): IErrorResponse => {
+interface IClientErrorInput {
+  message?: string;
+  response?: {
+    status?: number;
+    data?: {
+      message?: string;
+    };
+  };
+}
+
+const handleClientError = (error: IClientErrorInput): IErrorResponse => {
   return {
     statusCode: error.response?.status || 500,
     message: error.message || "Client Error",
     errorMessages: [
       {
         path: "",
-        message: error.response?.data?.message || error.message,
+        message:
+          error.response?.data?.message || error.message || "Client Error",
       },
     ],
   };

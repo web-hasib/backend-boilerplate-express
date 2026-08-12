@@ -4,11 +4,24 @@ interface IErrorResponse {
   errorMessages: Array<{ path: string; message: string }>;
 }
 
-const handleValidationError = (error: any): IErrorResponse => {
-  const errors = Object.values(error.errors || {}).map((err: any) => ({
-    path: err.path || "",
-    message: err.message || "Validation error",
-  }));
+interface IValidationErrorItem {
+  path?: string;
+  message?: string;
+}
+
+interface IValidationErrorInput {
+  errors?: Record<string, IValidationErrorItem>;
+}
+
+const handleValidationError = (
+  error: IValidationErrorInput,
+): IErrorResponse => {
+  const errors = Object.values(error.errors || {}).map(
+    (err: IValidationErrorItem) => ({
+      path: err.path || "",
+      message: err.message || "Validation error",
+    }),
+  );
 
   return {
     statusCode: 400,

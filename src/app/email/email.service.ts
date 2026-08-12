@@ -58,8 +58,9 @@ export class EmailService {
       await this.transporter.verify();
       console.log("✅ SMTP Connection verified & ready.");
       return true;
-    } catch (error: any) {
-      console.error("❌ SMTP Connection verification failed:", error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error("❌ SMTP Connection verification failed:", err.message);
       return false;
     }
   }
@@ -87,13 +88,19 @@ export class EmailService {
       console.log(
         `✉️ Email delivered successfully to [${options.to}]. MessageId: ${info.messageId}`,
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as Error;
       console.error("❌ Failed to send email via SMTP:", {
         to: options.to,
         subject: options.subject,
-        message: error.message,
+        message: err.message,
       });
-      throw new Error(`Email delivery failed: ${error.message || "Unknown error"}`);
+      throw new Error(
+        `Email delivery failed: ${err.message || "Unknown error"}`,
+        {
+          cause: error,
+        },
+      );
     }
   }
 

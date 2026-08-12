@@ -56,7 +56,7 @@ async function startServer() {
   }
 }
 
-process.on("unhandledRejection", (reason: any) => {
+process.on("unhandledRejection", (reason: unknown) => {
   console.error("❌ Unhandled Rejection:", reason);
   process.exit(1);
 });

@@ -15,11 +15,17 @@ interface IErrorResponse {
   stack?: string;
 }
 
+type IGlobalError = Error & {
+  name?: string;
+  isAxiosError?: boolean;
+  statusCode?: number;
+};
+
 const globalErrorHandler = (
-  err: any,
+  err: IGlobalError,
   req: Request,
   res: Response,
-  next: NextFunction,
+  _next: NextFunction,
 ): void => {
   let statusCode = 500;
   let message = "Internal Server Error";
@@ -39,7 +45,9 @@ const globalErrorHandler = (
     message = simplified.message;
     errorMessages = simplified.errorMessages;
   } else if (err.name === "ValidationError") {
-    const simplified = handleValidationError(err);
+    const simplified = handleValidationError(
+      err as unknown as Parameters<typeof handleValidationError>[0],
+    );
     statusCode = simplified.statusCode;
     message = simplified.message;
     errorMessages = simplified.errorMessages;

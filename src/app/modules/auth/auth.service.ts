@@ -40,7 +40,7 @@ const signup = async (payload: {
   }
 
   let userId: string;
-  let isNewUser = false;
+  let isNewUser: boolean;
 
   if (existingUser) {
     userId = existingUser.id;
@@ -320,10 +320,10 @@ const resetPassword = async (payload: {
   resetToken: string;
   newPassword: string;
 }) => {
-  let decoded: any;
+  let decoded: { userId: string; purpose: string };
   try {
     decoded = verifyResetToken(payload.resetToken);
-  } catch (err) {
+  } catch {
     throw new AppError(400, "Invalid or expired reset token");
   }
 
@@ -436,10 +436,10 @@ const resendOTP = async (email: string, type: OTPType) => {
 /* ============================= REFRESH TOKEN ============================= */
 const refreshAccessToken = async (refreshToken: string) => {
   // 1. Verify JWT token
-  let decoded: any;
+  let decoded: { userId: string; tokenId: string };
   try {
     decoded = verifyRefreshToken(refreshToken);
-  } catch (err) {
+  } catch {
     throw new AppError(401, "Invalid or expired refresh token");
   }
 
@@ -497,7 +497,7 @@ const logout = async (userId: string, refreshToken?: string) => {
     try {
       const decoded = verifyRefreshToken(refreshToken);
       await revokeRefreshToken(decoded.tokenId);
-    } catch (err) {
+    } catch {
       // Token already invalid, just continue
     }
   }

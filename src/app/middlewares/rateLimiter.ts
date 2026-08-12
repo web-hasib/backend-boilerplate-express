@@ -11,7 +11,8 @@ const getRateLimitKey = (req: Request): string => {
   const clientIp = req.ip || req.headers["x-forwarded-for"] || "127.0.0.1";
 
   if (userId) return `user_${userId}`;
-  if (email && typeof email === "string") return `email_${email.toLowerCase().trim()}`;
+  if (email && typeof email === "string")
+    return `email_${email.toLowerCase().trim()}`;
   return `ip_${clientIp}`;
 };
 
@@ -29,7 +30,8 @@ export const authRateLimiter = rateLimit({
   message: {
     success: false,
     statusCode: 429,
-    message: "Too many authentication requests. Please try again after 15 minutes.",
+    message:
+      "Too many authentication requests. Please try again after 15 minutes.",
   },
 });
 

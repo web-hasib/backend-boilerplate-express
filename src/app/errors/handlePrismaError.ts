@@ -6,7 +6,7 @@ interface IErrorResponse {
   errorMessages: Array<{ path: string; message: string }>;
 }
 
-const handlePrismaError = (error: any): IErrorResponse => {
+const handlePrismaError = (error: unknown): IErrorResponse => {
   let statusCode = 500;
   let message = "Database Error";
   const errorMessages: Array<{ path: string; message: string }> = [];

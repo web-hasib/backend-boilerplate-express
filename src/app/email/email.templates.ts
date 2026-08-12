@@ -177,7 +177,10 @@ export const renderBaseLayout = ({
 // ==========================================
 
 export const templates = {
-  [EmailType.SIGNUP_OTP]: ({ otp, expiryMinutes }: ISignupOTPPayload): IEmailResult => {
+  [EmailType.SIGNUP_OTP]: ({
+    otp,
+    expiryMinutes,
+  }: ISignupOTPPayload): IEmailResult => {
     const subject = "Verify Your Account";
     const sanitizedOTP = escapeHTML(otp);
 
@@ -202,11 +205,18 @@ Valid for ${expiryMinutes} minutes.
 
 If you didn't request this code, please ignore this email.`;
 
-    const { html, text } = renderBaseLayout({ title: subject, contentBody, plainTextBody });
+    const { html, text } = renderBaseLayout({
+      title: subject,
+      contentBody,
+      plainTextBody,
+    });
     return { subject, html, text };
   },
 
-  [EmailType.FORGOT_PASSWORD_OTP]: ({ otp, expiryMinutes }: IForgotPasswordOTPPayload): IEmailResult => {
+  [EmailType.FORGOT_PASSWORD_OTP]: ({
+    otp,
+    expiryMinutes,
+  }: IForgotPasswordOTPPayload): IEmailResult => {
     const subject = "Reset Your Password";
     const sanitizedOTP = escapeHTML(otp);
 
@@ -231,7 +241,11 @@ Valid for ${expiryMinutes} minutes.
 
 If you didn't request this code, please ignore this email.`;
 
-    const { html, text } = renderBaseLayout({ title: subject, contentBody, plainTextBody });
+    const { html, text } = renderBaseLayout({
+      title: subject,
+      contentBody,
+      plainTextBody,
+    });
     return { subject, html, text };
   },
 };
@@ -243,9 +257,11 @@ export const renderEmailTemplate = <K extends EmailType>(
   type: K,
   payload: EmailPayloadMap[K],
 ): IEmailResult => {
-  const templateFn = templates[type];
+  const templateFn = templates[type] as (
+    payload: EmailPayloadMap[K],
+  ) => IEmailResult;
   if (!templateFn) {
     throw new Error(`No email template registered for type '${type}'`);
   }
-  return templateFn(payload as any);
+  return templateFn(payload);
 };

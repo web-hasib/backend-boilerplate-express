@@ -11,7 +11,7 @@ const parseBodyData = async (
       // req.body = await JSON.parse(req.body.bodyData);
       req.body = await JSON.parse(req.body.bodyData);
       // console.log(req.body);
-    } catch (error) {
+    } catch {
       return next(new AppError(400, "Invalid JSON format in bodyData"));
     }
   }

@@ -90,7 +90,7 @@ const validateImage = async (file: Express.Multer.File): Promise<void> => {
     if (!metadata.format || !metadata.width || !metadata.height) {
       throw new Error("Invalid image dimensions");
     }
-  } catch (err) {
+  } catch {
     throw new AppError(400, "Corrupted image file content");
   }
 };
@@ -185,9 +185,10 @@ export const uploadImageToS3 = async (
       size: processedBuffer.length,
       mimetype: "image/webp",
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof AppError) throw error;
-    throw new AppError(500, `Image upload failed: ${error.message}`);
+    const err = error as Error;
+    throw new AppError(500, `Image upload failed: ${err.message}`);
   }
 };
 
@@ -207,8 +208,9 @@ export const uploadMultipleImagesToS3 = async (
 
   try {
     return await Promise.all(uploadPromises);
-  } catch (error: any) {
-    throw new AppError(500, `Multiple image upload failed: ${error.message}`);
+  } catch (error: unknown) {
+    const err = error as Error;
+    throw new AppError(500, `Multiple image upload failed: ${err.message}`);
   }
 };
 
@@ -223,7 +225,7 @@ export const deleteImageFromS3 = async (key: string): Promise<void> => {
     });
 
     await s3Client.send(command);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("S3 delete error:", error);
     // Don't throw error for delete failures (image might already be deleted)
   }
@@ -271,11 +273,9 @@ export const getPresignedUrl = async (
     });
 
     return await getSignedUrl(s3Client, command, { expiresIn });
-  } catch (error: any) {
-    throw new AppError(
-      500,
-      `Failed to generate presigned URL: ${error.message}`,
-    );
+  } catch (error: unknown) {
+    const err = error as Error;
+    throw new AppError(500, `Failed to generate presigned URL: ${err.message}`);
   }
 };
 

@@ -21,7 +21,7 @@ const auth = (...requiredRoles: UserRole[]) => {
       let decoded;
       try {
         decoded = verifyAccessToken(token);
-      } catch (error) {
+      } catch {
         throw new AppError(401, "Invalid or expired access token");
       }
 

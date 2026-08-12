@@ -51,7 +51,7 @@ const updateProfile = async (
     throw new AppError(404, "User not found");
   }
 
-  const updateData: any = { ...payload };
+  const updateData: Record<string, unknown> = { ...payload };
 
   // Handle profile image upload
   if (file) {
@@ -157,10 +157,13 @@ const uploadProfileImage = async (
   return updatedUser;
 };
 
-const getAllUsers = async (options: any, filters: IUserFilterRequest) => {
+const getAllUsers = async (
+  options: Record<string, unknown>,
+  filters: IUserFilterRequest,
+) => {
   const { page, limit, skip, sortBy, sortOrder } = calculatePagination(options);
 
-  const where: any = {};
+  const where: Record<string, unknown> = {};
 
   if (filters.searchTerm) {
     where.OR = [
