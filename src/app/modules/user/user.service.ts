@@ -173,26 +173,27 @@ const getAllUsers = async (options: any, filters: IUserFilterRequest) => {
     where.role = filters.role;
   }
 
-  const users = await prisma.user.findMany({
-    where,
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      profileImage: true,
-      role: true,
-      isVerified: true,
-      isActive: true,
-      isDeleted: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-    skip,
-    take: limit,
-    orderBy: { [sortBy]: sortOrder },
-  });
-
-  const total = await prisma.user.count({ where });
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        profileImage: true,
+        role: true,
+        isVerified: true,
+        isActive: true,
+        isDeleted: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      skip,
+      take: limit,
+      orderBy: { [sortBy]: sortOrder },
+    }),
+    prisma.user.count({ where }),
+  ]);
 
   return {
     meta: { page, limit, total },

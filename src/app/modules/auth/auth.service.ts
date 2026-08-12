@@ -65,28 +65,28 @@ const signup = async (payload: {
     isNewUser = true;
   }
 
-  // Invalidate all previous unused SIGNUP OTPs
-  await prisma.oTP.updateMany({
-    where: {
-      userId,
-      type: "SIGNUP",
-      isUsed: false,
-    },
-    data: { isUsed: true },
-  });
-
-  // Generate and save new OTP
   const otp = generateOTP();
 
-  await prisma.oTP.create({
-    data: {
-      userId,
-      otp,
-      type: "SIGNUP",
-      expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
-      isUsed: false,
-    },
-  });
+  // Atomically invalidate old SIGNUP OTPs and create new OTP in 1 DB transaction
+  await prisma.$transaction([
+    prisma.oTP.updateMany({
+      where: {
+        userId,
+        type: "SIGNUP",
+        isUsed: false,
+      },
+      data: { isUsed: true },
+    }),
+    prisma.oTP.create({
+      data: {
+        userId,
+        otp,
+        type: "SIGNUP",
+        expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
+        isUsed: false,
+      },
+    }),
+  ]);
 
   // Send email (fire and forget)
   sendOTPEmail(payload.email, otp, "SIGNUP").catch((error) => {
@@ -232,27 +232,28 @@ const forgotPassword = async (email: string) => {
   if (user.isDeleted) throw new AppError(410, "This account has been deleted");
   if (!user.isActive) throw new AppError(403, "Your account is suspended");
 
-  // Invalidate all previous unused FORGOT_PASSWORD OTPs
-  await prisma.oTP.updateMany({
-    where: {
-      userId: user.id,
-      type: "FORGOT_PASSWORD",
-      isUsed: false,
-    },
-    data: { isUsed: true },
-  });
-
   const otp = generateOTP();
 
-  await prisma.oTP.create({
-    data: {
-      userId: user.id,
-      otp,
-      type: "FORGOT_PASSWORD",
-      expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
-      isUsed: false,
-    },
-  });
+  // Atomically invalidate old FORGOT_PASSWORD OTPs and create new OTP in 1 DB transaction
+  await prisma.$transaction([
+    prisma.oTP.updateMany({
+      where: {
+        userId: user.id,
+        type: "FORGOT_PASSWORD",
+        isUsed: false,
+      },
+      data: { isUsed: true },
+    }),
+    prisma.oTP.create({
+      data: {
+        userId: user.id,
+        otp,
+        type: "FORGOT_PASSWORD",
+        expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
+        isUsed: false,
+      },
+    }),
+  ]);
 
   sendOTPEmail(email, otp, "FORGOT_PASSWORD").catch((error) => {
     console.error("Failed to send forgot password OTP email:", error);
@@ -398,27 +399,28 @@ const resendOTP = async (email: string, type: OTPType) => {
     throw new AppError(400, "Your account is already verified");
   }
 
-  // Invalidate all previous unused OTPs of this type
-  await prisma.oTP.updateMany({
-    where: {
-      userId: user.id,
-      type,
-      isUsed: false,
-    },
-    data: { isUsed: true },
-  });
-
   const otp = generateOTP();
 
-  await prisma.oTP.create({
-    data: {
-      userId: user.id,
-      otp,
-      type,
-      expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
-      isUsed: false,
-    },
-  });
+  // Atomically invalidate old OTPs and create new OTP in 1 DB transaction
+  await prisma.$transaction([
+    prisma.oTP.updateMany({
+      where: {
+        userId: user.id,
+        type,
+        isUsed: false,
+      },
+      data: { isUsed: true },
+    }),
+    prisma.oTP.create({
+      data: {
+        userId: user.id,
+        otp,
+        type,
+        expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
+        isUsed: false,
+      },
+    }),
+  ]);
 
   sendOTPEmail(email, otp, type).catch((error) => {
     console.error("Failed to send OTP email:", error);

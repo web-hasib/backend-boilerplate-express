@@ -15,51 +15,65 @@ import {
 import { AuthController } from "./auth.controller";
 import auth from "../../middlewares/authMiddleware";
 
+import { authRateLimiter } from "../../middlewares/rateLimiter";
+
 const router = Router();
 
 // Signup & Verification
 router.post(
   "/signup",
+  authRateLimiter,
   validateRequest(signupValidation),
   AuthController.signup,
 );
 
 router.post(
   "/verify-otp",
+  authRateLimiter,
   validateRequest(verifyOTPValidation),
   AuthController.verifyOTP,
 );
 
 router.post(
   "/resend-otp/signup",
+  authRateLimiter,
   validateRequest(resendOTPValidation),
   AuthController.resendSignupOTP,
 );
 
 // Login
-router.post("/login", validateRequest(loginValidation), AuthController.login);
+router.post(
+  "/login",
+  authRateLimiter,
+  validateRequest(loginValidation),
+  AuthController.login,
+);
 
 // Forgot Password (3 steps)
 router.post(
   "/forgot-password",
+  authRateLimiter,
   validateRequest(forgotPasswordValidation),
   AuthController.forgotPassword,
 );
 
 router.post(
   "/verify-forgot-password-otp",
+  authRateLimiter,
   validateRequest(verifyForgotPasswordOTPValidation),
   AuthController.verifyForgotPasswordOTP,
 );
 
 router.post(
   "/reset-password",
+  authRateLimiter,
   validateRequest(resetPasswordValidation),
   AuthController.resetPassword,
 );
 
 router.post(
   "/resend-otp/forgot-password",
+  authRateLimiter,
   validateRequest(resendOTPValidation),
   AuthController.resendForgotPasswordOTP,
 );
