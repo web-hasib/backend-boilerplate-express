@@ -116,3 +116,16 @@ export const logoutValidation = {
     refreshToken: z.string().optional(),
   }),
 };
+
+export const googleLoginValidation = {
+  body: z
+    .object({
+      idToken: z.string().optional(),
+      accessToken: z.string().optional(),
+      token: z.string().optional(),
+    })
+    .refine((data) => Boolean(data.idToken || data.accessToken || data.token), {
+      message: "Google token (idToken, accessToken, or token) is required",
+    }),
+};
+

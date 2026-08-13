@@ -3,6 +3,7 @@ import validateRequest from "../../middlewares/validateRequest";
 import {
   changePasswordValidation,
   forgotPasswordValidation,
+  googleLoginValidation,
   loginValidation,
   logoutValidation,
   refreshTokenValidation,
@@ -48,6 +49,15 @@ router.post(
   validateRequest(loginValidation),
   AuthController.login,
 );
+
+// Google OAuth Login
+router.post(
+  "/google-login",
+  authRateLimiter,
+  validateRequest(googleLoginValidation),
+  AuthController.googleLogin,
+);
+
 
 // Forgot Password (3 steps)
 router.post(

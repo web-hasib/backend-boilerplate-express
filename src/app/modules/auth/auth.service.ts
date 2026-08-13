@@ -1,3 +1,5 @@
+import crypto from "crypto";
+import { OAuth2Client } from "google-auth-library";
 import config from "../../config";
 import AppError from "../../errors/AppError";
 import { prisma } from "../../lib/prisma";
@@ -14,6 +16,63 @@ import {
 } from "../../utils/generateToken";
 import hashPassword from "../../utils/hashPassword";
 import generateOTP from "../../utils/otpGenerator";
+
+const googleOAuthClient = new OAuth2Client();
+
+interface IGoogleUserPayload {
+  email: string;
+  name: string;
+  picture?: string;
+  email_verified?: boolean;
+}
+
+const verifyGoogleToken = async (token: string): Promise<IGoogleUserPayload> => {
+  // 1. Attempt ID Token cryptographic verification via google-auth-library
+  try {
+    const ticket = await googleOAuthClient.verifyIdToken({
+      idToken: token,
+      audience: config.google.client_id || undefined,
+    });
+    const payload = ticket.getPayload();
+    if (payload && payload.email) {
+      return {
+        email: payload.email.toLowerCase(),
+        name: payload.name || payload.email.split("@")[0],
+        picture: payload.picture,
+        email_verified: payload.email_verified,
+      };
+    }
+  } catch {
+    // If ID Token verification fails, proceed to Access Token fallback
+  }
+
+  // 2. Fallback: Query Google OAuth2 UserInfo API for Access Tokens
+  try {
+    const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        email?: string;
+        name?: string;
+        picture?: string;
+        email_verified?: boolean;
+      };
+      if (data.email) {
+        return {
+          email: data.email.toLowerCase(),
+          name: data.name || data.email.split("@")[0],
+          picture: data.picture,
+          email_verified: data.email_verified,
+        };
+      }
+    }
+  } catch {
+    throw new AppError(401, "Invalid or expired Google token");
+  }
+
+  throw new AppError(401, "Invalid Google token payload");
+};
 
 type OTPType = "SIGNUP" | "FORGOT_PASSWORD";
 
@@ -222,7 +281,106 @@ const login = async (payload: { email: string; password: string }) => {
   };
 };
 
+/* ============================= GOOGLE LOGIN ============================= */
+const googleLogin = async (payload: {
+  idToken?: string;
+  accessToken?: string;
+  token?: string;
+}) => {
+  const rawToken = payload.idToken || payload.accessToken || payload.token;
+  if (!rawToken) {
+    throw new AppError(400, "Google token is required");
+  }
+
+  const googleUser = await verifyGoogleToken(rawToken);
+
+  let user = await prisma.user.findUnique({
+    where: { email: googleUser.email },
+    select: {
+      id: true,
+      email: true,
+      fullName: true,
+      profileImage: true,
+      role: true,
+      isVerified: true,
+      isActive: true,
+      isDeleted: true,
+    },
+  });
+
+  if (user) {
+    if (user.isDeleted)
+      throw new AppError(410, "Your account has been deleted");
+    if (!user.isActive) throw new AppError(403, "Your account is suspended");
+
+    if (!user.isVerified) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { isVerified: true },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          profileImage: true,
+          role: true,
+          isVerified: true,
+          isActive: true,
+          isDeleted: true,
+        },
+      });
+    }
+  } else {
+    const randomPassword = await hashPassword(
+      `G_${crypto.randomUUID()}_${Date.now()}!`,
+    );
+
+    user = await prisma.user.create({
+      data: {
+        email: googleUser.email,
+        fullName: googleUser.name,
+        profileImage: googleUser.picture || null,
+        password: randomPassword,
+        isVerified: true,
+        isActive: true,
+        isDeleted: false,
+        role: "USER",
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        profileImage: true,
+        role: true,
+        isVerified: true,
+        isActive: true,
+        isDeleted: true,
+      },
+    });
+  }
+
+  const accessToken = generateAccessToken({
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+  });
+
+  const refreshToken = await generateRefreshToken(user.id);
+
+  return {
+    accessToken,
+    refreshToken,
+    user: {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      profileImage: user.profileImage,
+      role: user.role,
+    },
+  };
+};
+
 /* ============================= FORGOT PASSWORD (STEP 1) ============================= */
+
 const forgotPassword = async (email: string) => {
   const user = await prisma.user.findUnique({
     where: { email },
@@ -523,6 +681,7 @@ export const AuthService = {
   signup,
   verifyOTP,
   login,
+  googleLogin,
   forgotPassword,
   verifyForgotPasswordOTP,
   resetPassword,

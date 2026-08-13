@@ -43,4 +43,9 @@ export default {
     secret_access_key: process.env.AWS_SECRET_ACCESS_KEY!,
     s3_bucket_name: process.env.AWS_S3_BUCKET_NAME!,
   },
+
+  google: {
+    client_id: process.env.GOOGLE_CLIENT_ID || "",
+  },
 };
+
