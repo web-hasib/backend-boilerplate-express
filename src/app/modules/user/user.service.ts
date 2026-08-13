@@ -25,7 +25,6 @@ const PROFILE_IMAGE_OPTIONS = {
   quality: 85,
 };
 
-
 const getProfile = async (userId: string) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -177,7 +176,6 @@ const getAllUsers = async (query: GetUsersQuery) => {
     where.role = role as UserRole;
   }
 
-
   const [users, total] = await Promise.all([
     prisma.user.findMany({
       where,
@@ -204,8 +202,6 @@ const getAllUsers = async (query: GetUsersQuery) => {
     meta: buildOffsetListMeta(page, limit, total),
     data: users,
   };
-
-
 };
 
 const deleteUser = async (userId: string) => {

@@ -18,4 +18,3 @@ const parseBodyData = (
 };
 
 export default parseBodyData;
-

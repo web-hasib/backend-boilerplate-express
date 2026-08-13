@@ -4,7 +4,6 @@ import { UserService } from "./user.service";
 import sendResponse from "../../utils/sendResponse";
 import type { GetUsersQuery } from "./user.validation";
 
-
 const getProfile = catchAsync(async (req: Request, res: Response) => {
   const result = await UserService.getProfile(req.user!.userId);
   sendResponse(res, {
@@ -76,7 +75,6 @@ const getAllUsers = catchAsync(async (req: Request, res: Response) => {
     data: result.data,
   });
 });
-
 
 const deleteUser = catchAsync(async (req: Request, res: Response) => {
   const result = await UserService.deleteUser(req.params.id as string);

@@ -20,7 +20,6 @@ export default {
     reset_secret: process.env.JWT_RESET_SECRET!,
   },
 
-
   smtp: {
     host: process.env.SMTP_HOST || "smtp-relay.brevo.com",
     port: Number(process.env.SMTP_PORT) || 587,

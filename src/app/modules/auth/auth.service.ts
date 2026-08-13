@@ -15,7 +15,6 @@ import {
 import hashPassword from "../../utils/hashPassword";
 import generateOTP from "../../utils/otpGenerator";
 
-
 type OTPType = "SIGNUP" | "FORGOT_PASSWORD";
 
 /* ============================= SIGNUP ============================= */
@@ -102,7 +101,6 @@ const signup = async (payload: {
     email: payload.email,
   };
 };
-
 
 /* ============================= VERIFY OTP (SIGNUP) ============================= */
 const verifyOTP = async (payload: { email: string; otp: string }) => {
@@ -319,7 +317,6 @@ const verifyForgotPasswordOTP = async (payload: {
     resetToken,
   };
 };
-
 
 /* ============================= RESET PASSWORD (STEP 3) ============================= */
 const resetPassword = async (payload: {

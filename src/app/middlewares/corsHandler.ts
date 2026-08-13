@@ -19,4 +19,3 @@ const corsOptions: cors.CorsOptions = {
 };
 
 export default cors(corsOptions);
-

@@ -11,7 +11,12 @@ export const updateUserValidation = {
 };
 
 // Allowed sort columns — enforced at schema level, not scattered across service/helper
-const USER_SORT_FIELDS = ["createdAt", "updatedAt", "fullName", "email"] as const;
+const USER_SORT_FIELDS = [
+  "createdAt",
+  "updatedAt",
+  "fullName",
+  "email",
+] as const;
 
 export const getUsersValidation = {
   query: z.object({
@@ -26,4 +31,3 @@ export const getUsersValidation = {
 
 // Inferred type — single source of truth used by controller AND service
 export type GetUsersQuery = z.infer<typeof getUsersValidation.query>;
-

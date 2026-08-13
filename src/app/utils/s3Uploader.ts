@@ -1,6 +1,5 @@
 import {
   DeleteObjectCommand,
-  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -24,7 +23,7 @@ const s3Client = new S3Client({
     httpAgent: new http.Agent({ keepAlive: true, maxSockets: 50 }),
     httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 50 }),
     connectionTimeout: 3000, // 3s max connect wait
-    requestTimeout: 10000,   // 10s max request wait
+    requestTimeout: 10000, // 10s max request wait
   }),
 });
 
@@ -287,7 +286,10 @@ export const getPresignedUploadUrl = async (
     return { uploadUrl, fileUrl, key };
   } catch (error: unknown) {
     const err = error as Error;
-    throw new AppError(500, `Failed to generate presigned upload URL: ${err.message}`);
+    throw new AppError(
+      500,
+      `Failed to generate presigned upload URL: ${err.message}`,
+    );
   }
 };
 
