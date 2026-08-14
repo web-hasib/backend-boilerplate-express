@@ -26,7 +26,9 @@ interface IGoogleUserPayload {
   email_verified?: boolean;
 }
 
-const verifyGoogleToken = async (token: string): Promise<IGoogleUserPayload> => {
+const verifyGoogleToken = async (
+  token: string,
+): Promise<IGoogleUserPayload> => {
   // 1. Attempt ID Token cryptographic verification via google-auth-library
   try {
     const ticket = await googleOAuthClient.verifyIdToken({
@@ -82,7 +84,10 @@ type OTPType = "SIGNUP" | "FORGOT_PASSWORD";
  */
 const checkAccountStatus = (status: UserStatus) => {
   if (status === UserStatus.DELETED) {
-    throw new AppError(410, "This account was previously deleted. Contact support.");
+    throw new AppError(
+      410,
+      "This account was previously deleted. Contact support.",
+    );
   }
   if (status === UserStatus.BLOCKED) {
     throw new AppError(403, "Your account is suspended. Contact support.");

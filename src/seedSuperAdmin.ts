@@ -89,11 +89,12 @@ export const seedAdmin = async (): Promise<void> => {
 
     // P2002: Unique constraint failed — another container replica created the admin simultaneously
     if (err.code === "P2002") {
-      logger.info("✅ Super Admin was created concurrently by another replica.");
+      logger.info(
+        "✅ Super Admin was created concurrently by another replica.",
+      );
       return;
     }
 
     logger.error("❌ Admin seeding failed:", err);
   }
 };
-

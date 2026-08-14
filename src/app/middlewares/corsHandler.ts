@@ -2,7 +2,10 @@ import cors from "cors";
 import config from "../config";
 
 const allowedOrigins = config.client_url
-  ? config.client_url.split(",").map((origin) => origin.trim()).filter(Boolean)
+  ? config.client_url
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean)
   : [];
 
 const corsOptions: cors.CorsOptions = {
@@ -28,4 +31,3 @@ const corsOptions: cors.CorsOptions = {
 };
 
 export default cors(corsOptions);
-

@@ -40,7 +40,8 @@ const handlePrismaError = (error: unknown): IErrorResponse => {
       message = "Required relation violation";
       errorMessages.push({
         path: "",
-        message: "The change would violate a required relationship between models",
+        message:
+          "The change would violate a required relationship between models",
       });
     } else {
       errorMessages.push({
@@ -61,4 +62,3 @@ const handlePrismaError = (error: unknown): IErrorResponse => {
 };
 
 export default handlePrismaError;
-

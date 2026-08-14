@@ -75,14 +75,17 @@ const globalErrorHandler = (
   }
 
   // Structured Logging
-  logger.error(`[${req.method}] ${req.originalUrl} - ${statusCode} - ${message}`, {
-    statusCode,
-    path: req.originalUrl,
-    method: req.method,
-    ip: req.ip,
-    errorMessages,
-    stack: err.stack,
-  });
+  logger.error(
+    `[${req.method}] ${req.originalUrl} - ${statusCode} - ${message}`,
+    {
+      statusCode,
+      path: req.originalUrl,
+      method: req.method,
+      ip: req.ip,
+      errorMessages,
+      stack: err.stack,
+    },
+  );
 
   const response: IErrorResponse = {
     success: false,
@@ -98,4 +101,3 @@ const globalErrorHandler = (
 };
 
 export default globalErrorHandler;
-

@@ -20,10 +20,7 @@ const prodFormat = winston.format.combine(
 const logger = winston.createLogger({
   level: isProduction ? "info" : "debug",
   format: isProduction ? prodFormat : devFormat,
-  transports: [
-    new winston.transports.Console(),
-  ],
+  transports: [new winston.transports.Console()],
 });
 
 export default logger;
-

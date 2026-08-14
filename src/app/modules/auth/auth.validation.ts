@@ -128,4 +128,3 @@ export const googleLoginValidation = {
       message: "Google token (idToken, accessToken, or token) is required",
     }),
 };
-

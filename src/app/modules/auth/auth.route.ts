@@ -58,7 +58,6 @@ router.post(
   AuthController.googleLogin,
 );
 
-
 // Forgot Password (3 steps)
 router.post(
   "/forgot-password",

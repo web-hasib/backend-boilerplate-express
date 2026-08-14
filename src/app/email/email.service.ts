@@ -61,7 +61,9 @@ export class EmailService {
       return true;
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error("❌ SMTP Connection verification failed:", { message: err.message });
+      logger.error("❌ SMTP Connection verification failed:", {
+        message: err.message,
+      });
       return false;
     }
   }
@@ -86,7 +88,9 @@ export class EmailService {
         },
       });
 
-      logger.info(`✉️ Email delivered successfully to [${options.to}]. MessageId: ${info.messageId}`);
+      logger.info(
+        `✉️ Email delivered successfully to [${options.to}]. MessageId: ${info.messageId}`,
+      );
     } catch (error: unknown) {
       const err = error as Error;
       logger.error("❌ Failed to send email via SMTP:", {

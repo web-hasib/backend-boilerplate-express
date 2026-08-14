@@ -40,4 +40,3 @@ export const apiRateLimiter = rateLimit({
     message: "Too many API requests. Please slow down.",
   },
 });
-
