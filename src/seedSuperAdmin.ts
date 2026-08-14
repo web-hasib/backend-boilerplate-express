@@ -1,4 +1,4 @@
-import { UserRole } from "@prisma/client";
+import { UserRole, UserStatus } from "@prisma/client";
 import config from "./app/config";
 import hashPassword from "./app/utils/hashPassword";
 import { prisma } from "./app/lib/prisma";
@@ -48,13 +48,8 @@ export const seedAdmin = async (): Promise<void> => {
         hasChanges = true;
       }
 
-      if (!existingSuperAdmin.isActive) {
-        updates.isActive = true;
-        hasChanges = true;
-      }
-
-      if (existingSuperAdmin.isDeleted) {
-        updates.isDeleted = false;
+      if (existingSuperAdmin.status !== UserStatus.ACTIVE) {
+        updates.status = UserStatus.ACTIVE;
         hasChanges = true;
       }
 
@@ -82,9 +77,8 @@ export const seedAdmin = async (): Promise<void> => {
           password: hashedPassword,
           fullName,
           role: UserRole.SUPER_ADMIN,
+          status: UserStatus.ACTIVE,
           isVerified: true,
-          isActive: true,
-          isDeleted: false,
         },
       });
       console.log(`✅ Super Admin created: ${email}`);

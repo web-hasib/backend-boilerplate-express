@@ -1,4 +1,5 @@
 import { OAuth2Client } from "google-auth-library";
+import { UserStatus } from "@prisma/client";
 import config from "../../config";
 import AppError from "../../errors/AppError";
 import { prisma } from "../../lib/prisma";
@@ -75,6 +76,18 @@ const verifyGoogleToken = async (token: string): Promise<IGoogleUserPayload> => 
 
 type OTPType = "SIGNUP" | "FORGOT_PASSWORD";
 
+/**
+ * DRY Helper to enforce domain status checks (DELETED -> 410, BLOCKED -> 403)
+ */
+const checkAccountStatus = (status: UserStatus) => {
+  if (status === UserStatus.DELETED) {
+    throw new AppError(410, "This account was previously deleted. Contact support.");
+  }
+  if (status === UserStatus.BLOCKED) {
+    throw new AppError(403, "Your account is suspended. Contact support.");
+  }
+};
+
 /* ============================= SIGNUP ============================= */
 const signup = async (payload: {
   email: string;
@@ -83,14 +96,11 @@ const signup = async (payload: {
 }) => {
   const existingUser = await prisma.user.findUnique({
     where: { email: payload.email },
-    select: { id: true, isVerified: true, isDeleted: true },
+    select: { id: true, isVerified: true, status: true },
   });
 
-  if (existingUser?.isDeleted) {
-    throw new AppError(
-      410,
-      "This account was previously deleted. Contact support.",
-    );
+  if (existingUser) {
+    checkAccountStatus(existingUser.status);
   }
 
   if (existingUser?.isVerified) {
@@ -121,9 +131,8 @@ const signup = async (payload: {
         password: hashedPassword,
         fullName: payload.fullName,
         role: "USER",
+        status: UserStatus.ACTIVE,
         isVerified: false,
-        isActive: true,
-        isDeleted: false,
       },
       select: { id: true },
     });
@@ -178,14 +187,12 @@ const verifyOTP = async (payload: { email: string; otp: string }) => {
       email: true,
       fullName: true,
       role: true,
-      isActive: true,
-      isDeleted: true,
+      status: true,
     },
   });
 
   if (!user) throw new AppError(404, "User not found");
-  if (user.isDeleted) throw new AppError(410, "Account deleted");
-  if (!user.isActive) throw new AppError(403, "Account suspended");
+  checkAccountStatus(user.status);
 
   const otpRecord = await prisma.oTP.findFirst({
     where: {
@@ -217,12 +224,13 @@ const verifyOTP = async (payload: { email: string; otp: string }) => {
     data: { isUsed: true },
   });
 
-  // Verify the user
+  // Mark user as verified
   await prisma.user.update({
     where: { id: user.id },
     data: { isVerified: true },
   });
 
+  // Issue Access Token & Persistent Refresh Token
   const accessToken = generateAccessToken({
     userId: user.id,
     email: user.email,
@@ -254,15 +262,13 @@ const login = async (payload: { email: string; password: string }) => {
       fullName: true,
       role: true,
       authProvider: true,
+      status: true,
       isVerified: true,
-      isActive: true,
-      isDeleted: true,
     },
   });
 
-  if (!user || user.isDeleted)
-    throw new AppError(401, "Invalid email or password");
-  if (!user.isActive) throw new AppError(403, "Your account is suspended");
+  if (!user) throw new AppError(401, "Invalid email or password");
+  checkAccountStatus(user.status);
 
   // Prevent Google OAuth users from logging in via Password Auth
   if (user.authProvider === "GOOGLE" || !user.password) {
@@ -320,16 +326,13 @@ const googleLogin = async (payload: {
       profileImage: true,
       authProvider: true,
       role: true,
+      status: true,
       isVerified: true,
-      isActive: true,
-      isDeleted: true,
     },
   });
 
   if (user) {
-    if (user.isDeleted)
-      throw new AppError(410, "Your account has been deleted");
-    if (!user.isActive) throw new AppError(403, "Your account is suspended");
+    checkAccountStatus(user.status);
 
     // Sync profile image and verification status if missing
     const updateData: Record<string, unknown> = {};
@@ -349,9 +352,8 @@ const googleLogin = async (payload: {
           profileImage: true,
           authProvider: true,
           role: true,
+          status: true,
           isVerified: true,
-          isActive: true,
-          isDeleted: true,
         },
       });
     }
@@ -364,9 +366,8 @@ const googleLogin = async (payload: {
         profileImage: googleUser.picture || null,
         password: null,
         authProvider: "GOOGLE",
+        status: UserStatus.ACTIVE,
         isVerified: true,
-        isActive: true,
-        isDeleted: false,
         role: "USER",
       },
       select: {
@@ -376,9 +377,8 @@ const googleLogin = async (payload: {
         profileImage: true,
         authProvider: true,
         role: true,
+        status: true,
         isVerified: true,
-        isActive: true,
-        isDeleted: true,
       },
     });
   }
@@ -404,18 +404,15 @@ const googleLogin = async (payload: {
   };
 };
 
-
 /* ============================= FORGOT PASSWORD (STEP 1) ============================= */
-
 const forgotPassword = async (email: string) => {
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true, isDeleted: true, isActive: true },
+    select: { id: true, status: true },
   });
 
   if (!user) throw new AppError(404, "No account found with this email");
-  if (user.isDeleted) throw new AppError(410, "This account has been deleted");
-  if (!user.isActive) throw new AppError(403, "Your account is suspended");
+  checkAccountStatus(user.status);
 
   const otp = generateOTP();
 
@@ -457,12 +454,11 @@ const verifyForgotPasswordOTP = async (payload: {
 }) => {
   const user = await prisma.user.findUnique({
     where: { email: payload.email },
-    select: { id: true, email: true, isDeleted: true, isActive: true },
+    select: { id: true, email: true, status: true },
   });
 
   if (!user) throw new AppError(404, "User not found");
-  if (user.isDeleted) throw new AppError(410, "This account has been deleted");
-  if (!user.isActive) throw new AppError(403, "Your account is suspended");
+  checkAccountStatus(user.status);
 
   const otpRecord = await prisma.oTP.findFirst({
     where: {
@@ -585,15 +581,13 @@ const resendOTP = async (email: string, type: OTPType) => {
     where: { email },
     select: {
       id: true,
-      isDeleted: true,
-      isActive: true,
+      status: true,
       isVerified: true,
     },
   });
 
   if (!user) throw new AppError(404, "No account found with this email");
-  if (user.isDeleted) throw new AppError(410, "This account has been deleted");
-  if (!user.isActive) throw new AppError(403, "Your account is suspended");
+  checkAccountStatus(user.status);
 
   if (type === "SIGNUP" && user.isVerified) {
     throw new AppError(400, "Your account is already verified");
@@ -652,8 +646,7 @@ const refreshAccessToken = async (refreshToken: string) => {
           id: true,
           email: true,
           role: true,
-          isActive: true,
-          isDeleted: true,
+          status: true,
           isVerified: true,
         },
       },
@@ -672,11 +665,10 @@ const refreshAccessToken = async (refreshToken: string) => {
     throw new AppError(401, "Refresh token has expired");
   }
 
-  // 3. Validate user
+  // 3. Validate user status
   const user = tokenRecord.user;
   if (!user) throw new AppError(404, "User not found");
-  if (user.isDeleted) throw new AppError(410, "Account deleted");
-  if (!user.isActive) throw new AppError(403, "Account suspended");
+  checkAccountStatus(user.status);
   if (!user.isVerified) throw new AppError(403, "Account not verified");
 
   // 4. Generate new access token

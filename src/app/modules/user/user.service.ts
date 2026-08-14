@@ -1,6 +1,6 @@
 import AppError from "../../errors/AppError";
 import { prisma } from "../../lib/prisma";
-import { Prisma, UserRole } from "@prisma/client";
+import { Prisma, UserRole, UserStatus } from "@prisma/client";
 import { buildOffsetListMeta } from "../../utils/listQuery";
 
 import {
@@ -35,9 +35,8 @@ const getProfile = async (userId: string) => {
       fullName: true,
       profileImage: true,
       role: true,
+      status: true,
       isVerified: true,
-      isActive: true,
-      isDeleted: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -82,9 +81,8 @@ const updateProfile = async (
       fullName: true,
       profileImage: true,
       role: true,
+      status: true,
       isVerified: true,
-      isActive: true,
-      isDeleted: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -152,6 +150,7 @@ const uploadProfileImage = async (
       fullName: true,
       profileImage: true,
       role: true,
+      status: true,
     },
   });
 
@@ -164,7 +163,7 @@ const getAllUsers = async (query: GetUsersQuery) => {
   const skip = (page - 1) * limit;
 
   // Build where clause — always exclude soft-deleted users
-  const where: Prisma.UserWhereInput = { isDeleted: false };
+  const where: Prisma.UserWhereInput = { status: { not: UserStatus.DELETED } };
 
   if (searchTerm) {
     where.OR = [
@@ -186,9 +185,8 @@ const getAllUsers = async (query: GetUsersQuery) => {
         fullName: true,
         profileImage: true,
         role: true,
+        status: true,
         isVerified: true,
-        isActive: true,
-        isDeleted: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -207,7 +205,7 @@ const getAllUsers = async (query: GetUsersQuery) => {
 
 const deleteUser = async (userId: string) => {
   const user = await prisma.user.findUnique({
-    where: { id: userId, isDeleted: false },
+    where: { id: userId, status: { not: UserStatus.DELETED } },
     select: { id: true, profileImage: true },
   });
 
@@ -228,7 +226,7 @@ const deleteUser = async (userId: string) => {
 
   await prisma.user.update({
     where: { id: userId },
-    data: { isDeleted: true, isActive: false },
+    data: { status: UserStatus.DELETED },
   });
 
   // Revoke all refresh tokens for deleted user

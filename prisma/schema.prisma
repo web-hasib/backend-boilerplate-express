@@ -17,6 +17,12 @@ enum AuthProvider {
   GOOGLE
 }
 
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  DELETED
+}
+
 model User {
   id           String       @id @default(uuid())
   email        String       @unique
@@ -25,9 +31,8 @@ model User {
   profileImage String?
   authProvider AuthProvider @default(LOCAL)
   role         UserRole     @default(USER)
+  status       UserStatus   @default(ACTIVE)
   isVerified   Boolean      @default(false)
-  isActive     Boolean      @default(true)
-  isDeleted    Boolean      @default(false)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -35,8 +40,8 @@ model User {
   otps          OTP[]
   refreshTokens RefreshToken[]
 
-  @@index([role, isDeleted, isActive])
-  @@index([isDeleted, createdAt(sort: Desc)])
+  @@index([role, status])
+  @@index([status, createdAt(sort: Desc)])
   @@map("users")
 }
 
