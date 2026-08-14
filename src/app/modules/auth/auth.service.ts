@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import config from "../../config";
 import AppError from "../../errors/AppError";
@@ -245,6 +244,7 @@ const login = async (payload: { email: string; password: string }) => {
       password: true,
       fullName: true,
       role: true,
+      authProvider: true,
       isVerified: true,
       isActive: true,
       isDeleted: true,
@@ -254,6 +254,14 @@ const login = async (payload: { email: string; password: string }) => {
   if (!user || user.isDeleted)
     throw new AppError(401, "Invalid email or password");
   if (!user.isActive) throw new AppError(403, "Your account is suspended");
+
+  // Prevent Google OAuth users from logging in via Password Auth
+  if (user.authProvider === "GOOGLE" || !user.password) {
+    throw new AppError(
+      400,
+      "This account was created using Google Login. Please sign in using Google.",
+    );
+  }
 
   const isValid = await comparePassword(payload.password, user.password);
   if (!isValid) throw new AppError(401, "Invalid email or password");
@@ -301,6 +309,7 @@ const googleLogin = async (payload: {
       email: true,
       fullName: true,
       profileImage: true,
+      authProvider: true,
       role: true,
       isVerified: true,
       isActive: true,
@@ -313,15 +322,23 @@ const googleLogin = async (payload: {
       throw new AppError(410, "Your account has been deleted");
     if (!user.isActive) throw new AppError(403, "Your account is suspended");
 
-    if (!user.isVerified) {
+    // Sync profile image and verification status if missing
+    const updateData: Record<string, unknown> = {};
+    if (!user.isVerified) updateData.isVerified = true;
+    if (!user.profileImage && googleUser.picture) {
+      updateData.profileImage = googleUser.picture;
+    }
+
+    if (Object.keys(updateData).length > 0) {
       user = await prisma.user.update({
         where: { id: user.id },
-        data: { isVerified: true },
+        data: updateData,
         select: {
           id: true,
           email: true,
           fullName: true,
           profileImage: true,
+          authProvider: true,
           role: true,
           isVerified: true,
           isActive: true,
@@ -330,16 +347,14 @@ const googleLogin = async (payload: {
       });
     }
   } else {
-    const randomPassword = await hashPassword(
-      `G_${crypto.randomUUID()}_${Date.now()}!`,
-    );
-
+    // Register Google OAuth user with null password (Signup)
     user = await prisma.user.create({
       data: {
         email: googleUser.email,
         fullName: googleUser.name,
         profileImage: googleUser.picture || null,
-        password: randomPassword,
+        password: null,
+        authProvider: "GOOGLE",
         isVerified: true,
         isActive: true,
         isDeleted: false,
@@ -350,6 +365,7 @@ const googleLogin = async (payload: {
         email: true,
         fullName: true,
         profileImage: true,
+        authProvider: true,
         role: true,
         isVerified: true,
         isActive: true,
@@ -378,6 +394,7 @@ const googleLogin = async (payload: {
     },
   };
 };
+
 
 /* ============================= FORGOT PASSWORD (STEP 1) ============================= */
 
@@ -521,10 +538,17 @@ const changePassword = async (
 ) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, password: true },
+    select: { id: true, password: true, authProvider: true },
   });
 
   if (!user) throw new AppError(404, "User not found");
+
+  if (!user.password || user.authProvider === "GOOGLE") {
+    throw new AppError(
+      400,
+      "This account was created using Google Login and does not have a password.",
+    );
+  }
 
   const isValid = await comparePassword(oldPassword, user.password);
   if (!isValid) throw new AppError(401, "Current password is incorrect");

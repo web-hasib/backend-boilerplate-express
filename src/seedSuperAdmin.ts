@@ -35,10 +35,9 @@ export const seedAdmin = async (): Promise<void> => {
       }
 
       // Only hash + compare password when necessary (bcrypt is ~300ms at cost 12)
-      const passwordMatch = await comparePassword(
-        password,
-        existingSuperAdmin.password,
-      );
+      const passwordMatch = existingSuperAdmin.password
+        ? await comparePassword(password, existingSuperAdmin.password)
+        : false;
       if (!passwordMatch) {
         updates.password = await hashPassword(password);
         hasChanges = true;
