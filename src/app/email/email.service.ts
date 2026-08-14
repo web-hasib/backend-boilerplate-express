@@ -1,5 +1,6 @@
 import nodemailer, { Transporter } from "nodemailer";
 import config from "../config";
+import logger from "../utils/logger";
 import {
   EmailType,
   EmailPayloadMap,
@@ -56,11 +57,11 @@ export class EmailService {
   public async verifyConnection(): Promise<boolean> {
     try {
       await this.transporter.verify();
-      console.log("✅ SMTP Connection verified & ready.");
+      logger.info("✅ SMTP Connection verified & ready.");
       return true;
     } catch (error: unknown) {
       const err = error as Error;
-      console.error("❌ SMTP Connection verification failed:", err.message);
+      logger.error("❌ SMTP Connection verification failed:", { message: err.message });
       return false;
     }
   }
@@ -85,12 +86,10 @@ export class EmailService {
         },
       });
 
-      console.log(
-        `✉️ Email delivered successfully to [${options.to}]. MessageId: ${info.messageId}`,
-      );
+      logger.info(`✉️ Email delivered successfully to [${options.to}]. MessageId: ${info.messageId}`);
     } catch (error: unknown) {
       const err = error as Error;
-      console.error("❌ Failed to send email via SMTP:", {
+      logger.error("❌ Failed to send email via SMTP:", {
         to: options.to,
         subject: options.subject,
         message: err.message,

@@ -3,6 +3,7 @@ import config from "./app/config";
 import hashPassword from "./app/utils/hashPassword";
 import { prisma } from "./app/lib/prisma";
 import comparePassword from "./app/utils/comparePassword";
+import logger from "./app/utils/logger";
 
 export const seedAdmin = async (): Promise<void> => {
   try {
@@ -58,7 +59,7 @@ export const seedAdmin = async (): Promise<void> => {
           where: { id: existingSuperAdmin.id },
           data: updates,
         });
-        console.log(
+        logger.info(
           `✅ Super Admin updated: ${email}${
             existingSuperAdmin.email !== email
               ? ` (previously: ${existingSuperAdmin.email})`
@@ -66,7 +67,7 @@ export const seedAdmin = async (): Promise<void> => {
           }`,
         );
       } else {
-        console.log(`✅ Super Admin already exists: ${email}`);
+        logger.info(`✅ Super Admin already exists: ${email}`);
       }
     } else {
       // No super admin exists — hash password only when creating
@@ -81,19 +82,18 @@ export const seedAdmin = async (): Promise<void> => {
           isVerified: true,
         },
       });
-      console.log(`✅ Super Admin created: ${email}`);
+      logger.info(`✅ Super Admin created: ${email}`);
     }
   } catch (error: unknown) {
     const err = error as Error & { code?: string };
 
     // P2002: Unique constraint failed — another container replica created the admin simultaneously
     if (err.code === "P2002") {
-      console.log(
-        "✅ Super Admin was created concurrently by another replica.",
-      );
+      logger.info("✅ Super Admin was created concurrently by another replica.");
       return;
     }
 
-    console.error("❌ Admin seeding failed:", err.message);
+    logger.error("❌ Admin seeding failed:", err);
   }
 };
+

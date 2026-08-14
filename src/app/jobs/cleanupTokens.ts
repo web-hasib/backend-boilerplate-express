@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import logger from "../utils/logger";
 
 /**
  * Cleanup expired refresh tokens
@@ -40,7 +41,7 @@ export const cleanupExpiredOTPs = async (): Promise<number> => {
  * Run all cleanup tasks
  */
 const runAllCleanupTasks = async (): Promise<void> => {
-  console.log("🧹 Starting cleanup tasks...");
+  logger.info("🧹 Starting token and OTP cleanup tasks...");
 
   try {
     const [deletedTokens, deletedOTPs] = await Promise.all([
@@ -48,12 +49,13 @@ const runAllCleanupTasks = async (): Promise<void> => {
       cleanupExpiredOTPs(),
     ]);
 
-    console.log(`✅ Cleanup completed successfully:`);
-    console.log(`   - Deleted ${deletedTokens} expired refresh tokens`);
-    console.log(`   - Deleted ${deletedOTPs} expired/used OTPs`);
+    logger.info("✅ Cleanup completed successfully:", {
+      deletedTokens,
+      deletedOTPs,
+    });
   } catch (error) {
-    console.error("❌ Cleanup failed:", error);
-    throw error; // Re-throw to handle in calling function if needed
+    logger.error("❌ Cleanup failed:", error);
+    throw error;
   }
 };
 
@@ -61,25 +63,25 @@ const runAllCleanupTasks = async (): Promise<void> => {
  * Start the cleanup job that runs periodically
  */
 export const startTokenCleanupJob = () => {
-  console.log("🔧 Initializing cleanup job...");
+  logger.info("🔧 Initializing background cleanup job...");
 
   // Run cleanup immediately on startup
   runAllCleanupTasks().catch((error) => {
-    console.error("❌ Initial cleanup failed:", error);
+    logger.error("❌ Initial cleanup failed:", error);
   });
 
   // Run cleanup every 24 hours
   const intervalId = setInterval(
     () => {
       runAllCleanupTasks().catch((error) => {
-        console.error("❌ Scheduled cleanup failed:", error);
+        logger.error("❌ Scheduled cleanup failed:", error);
       });
     },
     24 * 60 * 60 * 1000,
-  ); // 24 hours in milliseconds
+  );
 
-  console.log("✅ Cleanup job scheduled (runs every 24 hours)");
+  logger.info("✅ Cleanup job scheduled (runs every 24 hours)");
 
-  // Return interval ID for potential cleanup/testing
   return intervalId;
 };
+

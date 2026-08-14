@@ -1,8 +1,9 @@
 import app from "./app";
 import config from "./app/config";
 import { startTokenCleanupJob } from "./app/jobs/cleanupTokens";
-import { prisma } from "./app/lib/prisma";
+import { prisma, pool } from "./app/lib/prisma";
 import { seedAdmin } from "./seedSuperAdmin";
+import logger from "./app/utils/logger";
 
 const PORT = config.port;
 
@@ -10,7 +11,7 @@ async function startServer() {
   try {
     // Test database connection
     await prisma.$connect();
-    console.log("✅ Database connected successfully");
+    logger.info("✅ Database connected successfully");
 
     // Start cleanup job for expired tokens and OTPs
     const cleanupIntervalId = startTokenCleanupJob();
@@ -19,59 +20,62 @@ async function startServer() {
     try {
       await seedAdmin();
     } catch (seedErr) {
-      console.warn("⚠️ Admin seeding warning:", seedErr);
+      logger.warn("⚠️ Admin seeding warning:", seedErr);
     }
 
     // Start server
-
     const server = app.listen(Number(PORT), "0.0.0.0", () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
-      console.log(`📦 Environment: ${config.env}`);
-      console.log(`🏥 Server: ${config.backend_url}`);
+      logger.info(`🚀 Server running on port ${PORT} [${config.env}]`);
+      logger.info(`🏥 Base URL: ${config.backend_url}`);
     });
 
     // Graceful shutdown
+    let isShuttingDown = false;
     const gracefulShutdown = async (signal: string) => {
-      console.log(`\n${signal} received. Shutting down gracefully...`);
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      logger.info(`\n${signal} received. Shutting down gracefully...`);
 
-      // Stop the cleanup job from firing again during shutdown
+      // Stop cleanup job timer
       clearInterval(cleanupIntervalId);
 
       server.close(async () => {
-        console.log("✅ HTTP server closed");
+        logger.info("✅ HTTP server closed");
 
         try {
           await prisma.$disconnect();
-          console.log("✅ Database connections closed");
+          await pool.end();
+          logger.info("✅ Database connection pool drained and closed");
           process.exit(0);
         } catch (error) {
-          console.error("❌ Error during database disconnect:", error);
+          logger.error("❌ Error during database pool shutdown:", error);
           process.exit(1);
         }
       });
 
       setTimeout(() => {
-        console.error("⚠️ Forced shutdown after 10s timeout");
+        logger.error("⚠️ Forced shutdown after 10s timeout");
         process.exit(1);
-      }, 10000);
+      }, 10000).unref();
     };
 
     process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
     process.on("SIGINT", () => gracefulShutdown("SIGINT"));
   } catch (error) {
-    console.error("❌ Failed to start server:", error);
+    logger.error("❌ Failed to start server:", error);
     process.exit(1);
   }
 }
 
 process.on("unhandledRejection", (reason: unknown) => {
-  console.error("❌ Unhandled Rejection:", reason);
+  logger.error("❌ Unhandled Rejection:", reason);
   process.exit(1);
 });
 
 process.on("uncaughtException", (error: Error) => {
-  console.error("❌ Uncaught Exception:", error);
+  logger.error("❌ Uncaught Exception:", error);
   process.exit(1);
 });
 
 startServer();
+

@@ -7,6 +7,7 @@ import router from "./app/routes";
 import notFoundHandler from "./app/middlewares/notFoundHandler";
 import globalErrorHandler from "./app/middlewares/globalErrorHandler";
 import { apiRateLimiter } from "./app/middlewares/rateLimiter";
+import { HealthController } from "./app/modules/health/health.controller";
 
 const app: Application = express();
 
@@ -23,7 +24,7 @@ app.use(corsHandler);
 app.use(securityHeaders);
 app.use(apiRateLimiter);
 
-// === ROOT ===
+// === ROOT & HEALTH CHECK ===
 app.get("/", (_req, res) => {
   res.status(200).json({
     success: true,
@@ -32,6 +33,8 @@ app.get("/", (_req, res) => {
     server: `${config.backend_url}`,
   });
 });
+
+app.get("/health", HealthController.checkHealth);
 
 // === API ROUTES ===
 app.use("/api/v1", router);

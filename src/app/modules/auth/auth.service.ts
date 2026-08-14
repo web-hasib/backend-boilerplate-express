@@ -46,10 +46,11 @@ const verifyGoogleToken = async (token: string): Promise<IGoogleUserPayload> => 
     // If ID Token verification fails, proceed to Access Token fallback
   }
 
-  // 2. Fallback: Query Google OAuth2 UserInfo API for Access Tokens
+  // 2. Fallback: Query Google OAuth2 UserInfo API for Access Tokens (with 5s network timeout)
   try {
     const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
     });
     if (res.ok) {
       const data = (await res.json()) as {

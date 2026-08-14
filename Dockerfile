@@ -77,10 +77,10 @@ ENV NODE_ENV=production \
 
 EXPOSE 5000
 
-# Health check — hits the root route which returns a 200 JSON response.
+# Health check — hits the /health route which verifies DB connectivity.
 # Start period gives Prisma time to connect on cold start.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:5000/ | grep -q '"success":true' || exit 1
+  CMD wget -qO- http://127.0.0.1:5000/health | grep -q '"success":true' || exit 1
 
 
 # dumb-init as PID 1 ensures SIGTERM/SIGINT are forwarded correctly to Node

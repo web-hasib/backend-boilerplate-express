@@ -153,14 +153,14 @@ export const uploadImageToS3 = async (
   options?: IUploadOptions,
 ): Promise<IUploadedFile> => {
   try {
-    // 1. Single-pass validation & image compression in memory (5ms)
+    // 1. Single-pass validation & image compression in memory (~5ms)
     const processedBuffer = await processAndValidateImage(file, options);
 
     // 2. Generate S3 key & deterministic public URL
     const { key } = generateS3Key(file.originalname, options?.folder);
     const url = `https://${config.aws.s3_bucket_name}.s3.${config.aws.region}.amazonaws.com/${key}`;
 
-    // 3. ⚡ Non-blocking Async S3 Upload (Fire-and-Forget over persistent TCP pool)
+    // 3. Durable S3 Upload over persistent TCP pool (guarantees file persistence before returning)
     const command = new PutObjectCommand({
       Bucket: config.aws.s3_bucket_name,
       Key: key,
@@ -170,11 +170,9 @@ export const uploadImageToS3 = async (
       CacheControl: "public, max-age=31536000, immutable",
     });
 
-    s3Client.send(command).catch((err) => {
-      console.error("❌ Async S3 upload failed in background:", err);
-    });
+    await s3Client.send(command);
 
-    // 4. Return URL instantly to caller
+    // 4. Return URL to caller
     return {
       key,
       url,
@@ -185,7 +183,7 @@ export const uploadImageToS3 = async (
   } catch (error: unknown) {
     if (error instanceof AppError) throw error;
     const err = error as Error;
-    throw new AppError(500, `Image processing failed: ${err.message}`);
+    throw new AppError(500, `Image upload failed: ${err.message}`);
   }
 };
 

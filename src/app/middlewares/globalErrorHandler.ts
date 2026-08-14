@@ -7,6 +7,7 @@ import handleValidationError from "../errors/handleValidationError";
 import handleClientError from "../errors/handleClientError";
 import AppError from "../errors/AppError";
 import config from "../config";
+import logger from "../utils/logger";
 
 interface IErrorResponse {
   success: boolean;
@@ -73,9 +74,12 @@ const globalErrorHandler = (
     errorMessages = [{ path: "", message: err.message }];
   }
 
-  console.error("Error:", {
+  // Structured Logging
+  logger.error(`[${req.method}] ${req.originalUrl} - ${statusCode} - ${message}`, {
     statusCode,
-    message,
+    path: req.originalUrl,
+    method: req.method,
+    ip: req.ip,
     errorMessages,
     stack: err.stack,
   });
@@ -94,3 +98,4 @@ const globalErrorHandler = (
 };
 
 export default globalErrorHandler;
+

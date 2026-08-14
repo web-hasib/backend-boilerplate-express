@@ -25,12 +25,40 @@ const handlePrismaError = (error: unknown): IErrorResponse => {
       message = "Record not found";
       errorMessages.push({
         path: "",
+        message: "The requested record was not found",
+      });
+    } else if (error.code === "P2003") {
+      statusCode = 400;
+      message = "Foreign key constraint failed";
+      const field = (error.meta?.field_name as string) || "relation";
+      errorMessages.push({
+        path: field,
+        message: `Invalid reference for ${field}`,
+      });
+    } else if (error.code === "P2014") {
+      statusCode = 400;
+      message = "Required relation violation";
+      errorMessages.push({
+        path: "",
+        message: "The change would violate a required relationship between models",
+      });
+    } else {
+      errorMessages.push({
+        path: "",
         message: error.message,
       });
     }
+  } else if (error instanceof Prisma.PrismaClientValidationError) {
+    statusCode = 400;
+    message = "Database Validation Error";
+    errorMessages.push({
+      path: "",
+      message: error.message,
+    });
   }
 
   return { statusCode, message, errorMessages };
 };
 
 export default handlePrismaError;
+
