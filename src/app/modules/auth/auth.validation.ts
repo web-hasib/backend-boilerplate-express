@@ -37,7 +37,7 @@ export const verifyOTPValidation = {
 
     otp: z
       .string({ message: "OTP code is required" })
-      .length(6, "OTP must be exactly 6 digits")
+      .length(4, "OTP must be exactly 4 digits")
       .regex(/^\d+$/, "OTP must contain only numbers"),
   }),
 };
@@ -70,7 +70,7 @@ export const verifyForgotPasswordOTPValidation = {
 
     otp: z
       .string({ message: "OTP code is required" })
-      .length(6, "OTP must be exactly 6 digits")
+      .length(4, "OTP must be exactly 4 digits")
       .regex(/^\d+$/, "OTP must contain only numbers"),
   }),
 };

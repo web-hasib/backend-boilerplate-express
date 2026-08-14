@@ -1,6 +1,6 @@
 import { randomInt } from "crypto";
 
-// crypto.randomInt uses the OS CSPRNG — required for security-sensitive values
-const generateOTP = (): string => randomInt(100000, 1000000).toString();
+// crypto.randomInt uses the OS CSPRNG — generates 4-digit OTP (1000 - 9999)
+const generateOTP = (): string => randomInt(1000, 10000).toString();
 
 export default generateOTP;
