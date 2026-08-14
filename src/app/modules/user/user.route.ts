@@ -4,7 +4,11 @@ import { UserController } from "./user.controller";
 import { uploadSingle } from "../../middlewares/upload";
 import parseBodyData from "../../middlewares/parseBodyData";
 import validateRequest from "../../middlewares/validateRequest";
-import { getUsersValidation, updateUserValidation } from "./user.validation";
+import {
+  getUsersValidation,
+  updateUserValidation,
+  userIdParamValidation,
+} from "./user.validation";
 import { UserRole } from "@prisma/client";
 
 const router = Router();
@@ -41,10 +45,11 @@ router.get(
   UserController.getAllUsers,
 );
 
-// Super admin only: delete user
+// Admin / Super admin only: delete user
 router.delete(
   "/:id",
   auth(UserRole.SUPER_ADMIN, UserRole.ADMIN),
+  validateRequest(userIdParamValidation),
   UserController.deleteUser,
 );
 

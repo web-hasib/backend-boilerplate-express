@@ -2,12 +2,22 @@ import { prisma } from "../lib/prisma";
 import logger from "../utils/logger";
 
 /**
- * Cleanup expired refresh tokens
+ * Cleanup expired and old revoked refresh tokens
  */
 export const cleanupExpiredRefreshTokens = async (): Promise<number> => {
   const result = await prisma.refreshToken.deleteMany({
     where: {
-      expiresAt: { lt: new Date() },
+      OR: [
+        // Delete expired refresh tokens
+        { expiresAt: { lt: new Date() } },
+        // Delete revoked refresh tokens older than 7 days
+        {
+          isRevoked: true,
+          updatedAt: {
+            lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          },
+        },
+      ],
     },
   });
 

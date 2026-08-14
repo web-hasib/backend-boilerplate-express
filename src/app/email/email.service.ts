@@ -72,6 +72,20 @@ export class EmailService {
    * Sends email with Anti-Spam headers, TLS Encryption, and High Priority.
    */
   public async sendMail(options: ISendEmailOptions): Promise<void> {
+    // In development mode, if SMTP credentials are unconfigured, log email and return
+    if (
+      config.env === "development" &&
+      (!config.smtp.user || !config.smtp.pass)
+    ) {
+      logger.info(
+        `✉️ [DEV MODE - SMTP UNCONFIGURED] Simulated email to: ${options.to} | Subject: ${options.subject}`,
+      );
+      if (options.textContent) {
+        logger.info(`[DEV EMAIL TEXT]\n${options.textContent}`);
+      }
+      return;
+    }
+
     try {
       const info = await this.transporter.sendMail({
         from: `"${config.smtp.from_name}" <${config.smtp.from_email}>`,
@@ -142,6 +156,15 @@ export const sendOTPEmail = async (
     type === "FORGOT_PASSWORD"
       ? EmailType.FORGOT_PASSWORD_OTP
       : EmailType.SIGNUP_OTP;
+
+  if (
+    config.env === "development" &&
+    (!config.smtp.user || !config.smtp.pass)
+  ) {
+    logger.info(
+      `🔑 [DEV ONLY] ${type} OTP for [${email}]: ${otp} (valid for ${expiryMinutes} min)`,
+    );
+  }
 
   await emailService.sendTemplate(emailType, email, {
     otp,

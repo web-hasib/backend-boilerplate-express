@@ -1,3 +1,4 @@
+import multer from "multer";
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 import handleZodError from "../errors/handleZodError";
@@ -45,6 +46,27 @@ const globalErrorHandler = (
     statusCode = simplified.statusCode;
     message = simplified.message;
     errorMessages = simplified.errorMessages;
+  } else if (err instanceof multer.MulterError) {
+    statusCode = 400;
+    if (err.code === "LIMIT_FILE_SIZE") {
+      message = "File size exceeds 5MB limit";
+    } else if (err.code === "LIMIT_FILE_COUNT") {
+      message = "Too many files uploaded";
+    } else if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      message = `Unexpected file field: ${err.field || "unknown"}`;
+    } else {
+      message = err.message || "File upload error";
+    }
+    errorMessages = [{ path: err.field || "file", message }];
+  } else if (
+    err instanceof SyntaxError &&
+    "status" in err &&
+    (err as { status?: number }).status === 400 &&
+    "body" in err
+  ) {
+    statusCode = 400;
+    message = "Malformed JSON payload in request body";
+    errorMessages = [{ path: "body", message: "Malformed JSON payload" }];
   } else if (err.name === "ValidationError") {
     const simplified = handleValidationError(
       err as unknown as Parameters<typeof handleValidationError>[0],
@@ -60,6 +82,10 @@ const globalErrorHandler = (
     statusCode = 401;
     message = "Token expired";
     errorMessages = [{ path: "", message: "Token has expired" }];
+  } else if (err.name === "NotBeforeError") {
+    statusCode = 401;
+    message = "Token not active yet";
+    errorMessages = [{ path: "", message: "Token not active yet" }];
   } else if (err.isAxiosError) {
     const simplified = handleClientError(err);
     statusCode = simplified.statusCode;

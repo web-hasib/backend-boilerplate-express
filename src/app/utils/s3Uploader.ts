@@ -11,6 +11,7 @@ import https from "https";
 import { v4 as uuidv4 } from "uuid";
 import config from "../config";
 import AppError from "../errors/AppError";
+import logger from "./logger";
 
 // ⚡ High-Performance S3 Client with Persistent TCP Connection Pooling & Fast Timeouts
 const s3Client = new S3Client({
@@ -152,6 +153,10 @@ export const uploadImageToS3 = async (
   file: Express.Multer.File,
   options?: IUploadOptions,
 ): Promise<IUploadedFile> => {
+  if (!config.aws.s3_bucket_name) {
+    throw new AppError(500, "AWS S3 bucket is not configured");
+  }
+
   try {
     // 1. Single-pass validation & image compression in memory (~5ms)
     const processedBuffer = await processAndValidateImage(file, options);
@@ -220,7 +225,7 @@ export const deleteImageFromS3 = async (key: string): Promise<void> => {
 
     await s3Client.send(command);
   } catch (error: unknown) {
-    console.error("S3 delete error:", error);
+    logger.error("S3 delete error:", { error, key });
   }
 };
 
@@ -266,6 +271,10 @@ export const getPresignedUploadUrl = async (
   folder: string = "profiles",
   contentType: string = "image/webp",
 ): Promise<{ uploadUrl: string; fileUrl: string; key: string }> => {
+  if (!config.aws.s3_bucket_name) {
+    throw new AppError(500, "AWS S3 bucket is not configured");
+  }
+
   try {
     const timestamp = Date.now();
     const uuid = uuidv4().split("-")[0];
@@ -305,7 +314,7 @@ export const replaceImage = async (
     const oldKey = extractS3KeyFromUrl(oldUrl);
     if (oldKey) {
       deleteImageFromS3(oldKey).catch((err) =>
-        console.error("Failed to delete old image:", err),
+        logger.error("Failed to delete old image:", { error: err, oldKey }),
       );
     }
   }

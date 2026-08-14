@@ -15,10 +15,21 @@ const handlePrismaError = (error: unknown): IErrorResponse => {
     if (error.code === "P2002") {
       statusCode = 409;
       message = "Unique constraint violation";
-      const field = (error.meta?.target as string[]) || [];
+      const target = error.meta?.target;
+      let fieldPath = "";
+      let fieldDisplay = "Field";
+
+      if (Array.isArray(target)) {
+        fieldPath = target.join(".");
+        fieldDisplay = target.join(", ");
+      } else if (typeof target === "string") {
+        fieldPath = target;
+        fieldDisplay = target.replace(/^.*_([^_]+)_key$/, "$1");
+      }
+
       errorMessages.push({
-        path: field.join("."),
-        message: `${field.join(", ")} already exists`,
+        path: fieldPath,
+        message: `${fieldDisplay} already exists`,
       });
     } else if (error.code === "P2025") {
       statusCode = 404;

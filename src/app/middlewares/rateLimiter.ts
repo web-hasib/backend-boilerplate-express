@@ -14,29 +14,45 @@ export const authRateLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req: Request): string => req.ip || "127.0.0.1",
   validate: { keyGeneratorIpFallback: false },
-  message: {
-    success: false,
-    statusCode: 429,
-    message:
-      "Too many authentication requests from this IP. Please try again after 15 minutes.",
+  statusCode: 429,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      message:
+        "Too many authentication requests from this IP. Please try again after 15 minutes.",
+      errorMessages: [
+        {
+          path: "",
+          message:
+            "Too many authentication requests from this IP. Please try again after 15 minutes.",
+        },
+      ],
+    });
   },
 });
 
 /**
  * Rate Limiter for General API Endpoints.
- * Limit: 100 requests per 1 minute per authenticated user or IP address.
+ * Limit: 100 requests per 1 minute per IP address.
  */
 export const apiRateLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: Request): string =>
-    req.user?.userId ? `user_${req.user.userId}` : req.ip || "127.0.0.1",
+  keyGenerator: (req: Request): string => req.ip || "127.0.0.1",
   validate: { keyGeneratorIpFallback: false },
-  message: {
-    success: false,
-    statusCode: 429,
-    message: "Too many API requests. Please slow down.",
+  statusCode: 429,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      message: "Too many API requests. Please slow down.",
+      errorMessages: [
+        {
+          path: "",
+          message: "Too many API requests. Please slow down.",
+        },
+      ],
+    });
   },
 });

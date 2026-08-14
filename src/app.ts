@@ -16,8 +16,8 @@ app.set("trust proxy", 1);
 
 // === COMPRESSION & BODY PARSERS ===
 app.use(compression());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 // === GLOBAL MIDDLEWARES ===
 app.use(corsHandler);

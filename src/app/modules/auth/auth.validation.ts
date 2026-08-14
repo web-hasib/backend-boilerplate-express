@@ -86,13 +86,18 @@ export const resetPasswordValidation = {
 };
 
 export const changePasswordValidation = {
-  body: z.object({
-    oldPassword: z
-      .string({ message: "Current password is required" })
-      .min(1, "Current password cannot be empty"),
+  body: z
+    .object({
+      oldPassword: z
+        .string({ message: "Current password is required" })
+        .min(1, "Current password cannot be empty"),
 
-    newPassword: passwordSchema,
-  }),
+      newPassword: passwordSchema,
+    })
+    .refine((data) => data.oldPassword !== data.newPassword, {
+      message: "New password must be different from current password",
+      path: ["newPassword"],
+    }),
 };
 
 export const resendOTPValidation = {

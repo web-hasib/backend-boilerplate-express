@@ -38,19 +38,26 @@ export const verifyAccessToken = (token: string): IAccessTokenPayload => {
 
 /* ============================= HELPERS ============================= */
 /**
- * Parse a JWT-style duration string (e.g. "7d", "24h", "30m", "60s") into milliseconds.
+ * Parse a JWT-style duration string (e.g. "7d", "24h", "30m", "60s", "1w", "1y") or raw ms into milliseconds.
  * Throws if the format is unrecognised so misconfiguration is caught at startup.
  */
 const parseDurationMs = (duration: string): number => {
-  const match = duration.match(/^(\d+)(d|h|m|s)$/);
+  // Allow raw number strings (e.g., "3600000")
+  if (/^\d+$/.test(duration)) {
+    return parseInt(duration, 10);
+  }
+
+  const match = duration.match(/^(\d+)(d|h|m|s|w|y)$/);
   if (!match) {
     throw new Error(
-      `Invalid JWT duration format: "${duration}". Use Nd / Nh / Nm / Ns (e.g. "7d").`,
+      `Invalid JWT duration format: "${duration}". Use Nd / Nh / Nm / Ns / Nw / Ny (e.g. "7d").`,
     );
   }
   const value = parseInt(match[1], 10);
   const unit = match[2];
   const multipliers: Record<string, number> = {
+    y: 365 * 86400000,
+    w: 7 * 86400000,
     d: 86400000,
     h: 3600000,
     m: 60000,

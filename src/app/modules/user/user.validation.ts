@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { UserRole } from "@prisma/client";
 
 export const updateUserValidation = {
   body: z.object({
@@ -7,6 +8,12 @@ export const updateUserValidation = {
       .min(2, "Full name must be at least 2 characters")
       .max(100, "Full name cannot exceed 100 characters")
       .optional(),
+  }),
+};
+
+export const userIdParamValidation = {
+  params: z.object({
+    id: z.string().uuid("Invalid user ID format"),
   }),
 };
 
@@ -25,7 +32,7 @@ export const getUsersValidation = {
     sortBy: z.enum(USER_SORT_FIELDS).optional().default("createdAt"),
     sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
     searchTerm: z.string().trim().optional(),
-    role: z.string().optional(),
+    role: z.nativeEnum(UserRole).optional(),
   }),
 };
 

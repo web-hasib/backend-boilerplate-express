@@ -16,8 +16,13 @@ import {
 } from "../../utils/generateToken";
 import hashPassword from "../../utils/hashPassword";
 import generateOTP from "../../utils/otpGenerator";
+import logger from "../../utils/logger";
 
 const googleOAuthClient = new OAuth2Client();
+
+// Constant dummy bcrypt hash for equalizing timing when user is not found or has no password
+const DUMMY_HASH =
+  "$2b$12$e8xM4j7yDkUqD6qW0j6W..ZzZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ";
 
 interface IGoogleUserPayload {
   email: string;
@@ -37,6 +42,9 @@ const verifyGoogleToken = async (
     });
     const payload = ticket.getPayload();
     if (payload && payload.email) {
+      if (payload.email_verified === false) {
+        throw new AppError(400, "Google account email is not verified");
+      }
       return {
         email: payload.email.toLowerCase(),
         name: payload.name || payload.email.split("@")[0],
@@ -44,7 +52,8 @@ const verifyGoogleToken = async (
         email_verified: payload.email_verified,
       };
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     // If ID Token verification fails, proceed to Access Token fallback
   }
 
@@ -62,6 +71,9 @@ const verifyGoogleToken = async (
         email_verified?: boolean;
       };
       if (data.email) {
+        if (data.email_verified === false) {
+          throw new AppError(400, "Google account email is not verified");
+        }
         return {
           email: data.email.toLowerCase(),
           name: data.name || data.email.split("@")[0],
@@ -70,7 +82,8 @@ const verifyGoogleToken = async (
         };
       }
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError(401, "Invalid or expired Google token");
   }
 
@@ -172,7 +185,7 @@ const signup = async (payload: {
 
   // Send email (fire and forget)
   sendOTPEmail(payload.email, otp, "SIGNUP").catch((error) => {
-    console.error("Failed to send signup OTP email:", error);
+    logger.error("Failed to send signup OTP email:", { error });
   });
 
   return {
@@ -273,11 +286,16 @@ const login = async (payload: { email: string; password: string }) => {
     },
   });
 
-  if (!user) throw new AppError(401, "Invalid email or password");
+  if (!user || !user.password) {
+    // Perform dummy compare to equalize response time and prevent user enumeration
+    await comparePassword(payload.password, DUMMY_HASH);
+    throw new AppError(401, "Invalid email or password");
+  }
+
   checkAccountStatus(user.status);
 
   // Prevent Google OAuth users from logging in via Password Auth
-  if (user.authProvider === "GOOGLE" || !user.password) {
+  if (user.authProvider === "GOOGLE") {
     throw new AppError(
       400,
       "This account was created using Google Login. Please sign in using Google.",
@@ -444,7 +462,7 @@ const forgotPassword = async (email: string) => {
   ]);
 
   sendOTPEmail(email, otp, "FORGOT_PASSWORD").catch((error) => {
-    console.error("Failed to send forgot password OTP email:", error);
+    logger.error("Failed to send forgot password OTP email:", { error });
   });
 
   return {
@@ -623,7 +641,7 @@ const resendOTP = async (email: string, type: OTPType) => {
   ]);
 
   sendOTPEmail(email, otp, type).catch((error) => {
-    console.error("Failed to send OTP email:", error);
+    logger.error("Failed to send OTP email:", { error, type });
   });
 
   const context = type === "SIGNUP" ? "verification" : "password reset";

@@ -59,6 +59,7 @@ model OTP {
 
   @@index([userId, type, isUsed, expiresAt])
   @@index([expiresAt])
+  @@index([isUsed, createdAt])
   @@map("otps")
 }
 
@@ -74,6 +75,7 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, isRevoked])
   @@index([expiresAt])
   @@map("refresh_tokens")
 }

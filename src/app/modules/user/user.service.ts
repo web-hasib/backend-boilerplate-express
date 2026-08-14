@@ -9,6 +9,7 @@ import {
   replaceImage,
 } from "../../utils/s3Uploader";
 import { revokeAllUserRefreshTokens } from "../../utils/generateToken";
+import logger from "../../utils/logger";
 import type { GetUsersQuery } from "./user.validation";
 
 interface IUpdateUserRequest {
@@ -206,11 +207,16 @@ const getAllUsers = async (query: GetUsersQuery) => {
 const deleteUser = async (userId: string) => {
   const user = await prisma.user.findUnique({
     where: { id: userId, status: { not: UserStatus.DELETED } },
-    select: { id: true, profileImage: true },
+    select: { id: true, role: true, profileImage: true },
   });
 
   if (!user) {
     throw new AppError(404, "User not found");
+  }
+
+  // Prevent Super Admin account deletion
+  if (user.role === UserRole.SUPER_ADMIN) {
+    throw new AppError(403, "Super Admin accounts cannot be deleted");
   }
 
   // Soft delete — preserves data integrity and audit trail.
@@ -219,7 +225,9 @@ const deleteUser = async (userId: string) => {
     const imageKey = extractS3KeyFromUrl(user.profileImage);
     if (imageKey) {
       deleteImageFromS3(imageKey).catch((err) =>
-        console.error("Failed to delete profile image on user delete:", err),
+        logger.error("Failed to delete profile image on user delete:", {
+          error: err,
+        }),
       );
     }
   }
