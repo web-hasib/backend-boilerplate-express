@@ -8,6 +8,7 @@ import {
   extractS3KeyFromUrl,
   replaceImage,
 } from "../../utils/s3Uploader";
+import { revokeAllUserRefreshTokens } from "../../utils/generateToken";
 import type { GetUsersQuery } from "./user.validation";
 
 interface IUpdateUserRequest {
@@ -215,8 +216,7 @@ const deleteUser = async (userId: string) => {
   }
 
   // Soft delete — preserves data integrity and audit trail.
-  // isDeleted flag is the pattern used everywhere else in this codebase.
-  // S3 image is also removed to avoid orphaned storage charges.
+  // Revoke all refresh tokens immediately so active sessions are terminated.
   if (user.profileImage) {
     const imageKey = extractS3KeyFromUrl(user.profileImage);
     if (imageKey) {
@@ -230,6 +230,9 @@ const deleteUser = async (userId: string) => {
     where: { id: userId },
     data: { isDeleted: true, isActive: false },
   });
+
+  // Revoke all refresh tokens for deleted user
+  await revokeAllUserRefreshTokens(userId);
 
   return { message: "User deleted successfully" };
 };

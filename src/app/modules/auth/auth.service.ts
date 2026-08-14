@@ -103,6 +103,15 @@ const signup = async (payload: {
   if (existingUser) {
     userId = existingUser.id;
     isNewUser = false;
+    // Re-hash and update password & fullName if user is re-signing up prior to OTP verification
+    const hashedPassword = await hashPassword(payload.password);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        fullName: payload.fullName,
+      },
+    });
   } else {
     const hashedPassword = await hashPassword(payload.password);
 
@@ -516,6 +525,9 @@ const resetPassword = async (payload: {
     data: { password: hashed },
   });
 
+  // OWASP Standard: Immediately invalidate all active user sessions on password reset
+  await revokeAllUserRefreshTokens(decoded.userId);
+
   // Clean up all forgot-password OTPs
   await prisma.oTP.deleteMany({
     where: {
@@ -558,6 +570,9 @@ const changePassword = async (
     where: { id: userId },
     data: { password: hashed },
   });
+
+  // OWASP Standard: Immediately invalidate all existing refresh sessions on password change
+  await revokeAllUserRefreshTokens(userId);
 
   return {
     message: "Password changed successfully",
