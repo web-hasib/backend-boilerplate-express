@@ -37,7 +37,12 @@ async function startServer() {
       logger.info(`\n${signal} received. Shutting down gracefully...`);
 
       // Stop cleanup job timer
-      clearInterval(cleanupIntervalId);
+      clearTimeout(cleanupIntervalId);
+
+      // Close idle HTTP keep-alive connections so the server can close without hanging
+      if (typeof server.closeIdleConnections === "function") {
+        server.closeIdleConnections();
+      }
 
       server.close(async () => {
         logger.info("✅ HTTP server closed");
@@ -55,7 +60,7 @@ async function startServer() {
 
       setTimeout(() => {
         logger.error("⚠️ Forced shutdown after 10s timeout");
-        process.exit(1);
+        process.exit(0);
       }, 10000).unref();
     };
 

@@ -157,10 +157,7 @@ export const sendOTPEmail = async (
       ? EmailType.FORGOT_PASSWORD_OTP
       : EmailType.SIGNUP_OTP;
 
-  if (
-    config.env === "development" &&
-    (!config.smtp.user || !config.smtp.pass)
-  ) {
+  if (config.env === "development") {
     logger.info(
       `🔑 [DEV ONLY] ${type} OTP for [${email}]: ${otp} (valid for ${expiryMinutes} min)`,
     );

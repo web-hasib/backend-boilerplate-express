@@ -1,4 +1,3 @@
-import multer from "multer";
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 import handleZodError from "../errors/handleZodError";
@@ -46,18 +45,6 @@ const globalErrorHandler = (
     statusCode = simplified.statusCode;
     message = simplified.message;
     errorMessages = simplified.errorMessages;
-  } else if (err instanceof multer.MulterError) {
-    statusCode = 400;
-    if (err.code === "LIMIT_FILE_SIZE") {
-      message = "File size exceeds 5MB limit";
-    } else if (err.code === "LIMIT_FILE_COUNT") {
-      message = "Too many files uploaded";
-    } else if (err.code === "LIMIT_UNEXPECTED_FILE") {
-      message = `Unexpected file field: ${err.field || "unknown"}`;
-    } else {
-      message = err.message || "File upload error";
-    }
-    errorMessages = [{ path: err.field || "file", message }];
   } else if (
     err instanceof SyntaxError &&
     "status" in err &&

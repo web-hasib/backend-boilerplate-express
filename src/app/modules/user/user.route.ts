@@ -1,8 +1,6 @@
 import { Router } from "express";
 import auth from "../../middlewares/authMiddleware";
 import { UserController } from "./user.controller";
-import { uploadSingle } from "../../middlewares/upload";
-import parseBodyData from "../../middlewares/parseBodyData";
 import validateRequest from "../../middlewares/validateRequest";
 import {
   getUsersValidation,
@@ -16,25 +14,15 @@ const router = Router();
 // Get own profile
 router.get("/profile", auth(), UserController.getProfile);
 
-// Update own profile (with optional image)
+// Update own profile (pure JSON: fullName, profileImage URL)
 router.patch(
   "/profile",
   auth(),
-  uploadSingle("profileImage"),
-  parseBodyData,
   validateRequest(updateUserValidation),
   UserController.updateProfile,
 );
 
-// Upload/Update profile image (dedicated endpoint)
-router.post(
-  "/profile/image",
-  auth(),
-  uploadSingle("profileImage"),
-  UserController.uploadProfileImage,
-);
-
-// Delete profile image
+// Delete profile image (cleans up from S3 & resets DB to null)
 router.delete("/profile/image", auth(), UserController.deleteProfileImage);
 
 // Admin-only: get all users

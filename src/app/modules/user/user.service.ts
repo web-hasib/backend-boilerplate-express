@@ -2,30 +2,14 @@ import AppError from "../../errors/AppError";
 import { prisma } from "../../lib/prisma";
 import { Prisma, UserRole, UserStatus } from "@prisma/client";
 import { buildOffsetListMeta } from "../../utils/listQuery";
-
-import {
-  deleteImageFromS3,
-  extractS3KeyFromUrl,
-  replaceImage,
-} from "../../utils/s3Uploader";
-import { revokeAllUserRefreshTokens } from "../../utils/generateToken";
+import { deleteImageFromS3, extractS3KeyFromUrl } from "../../utils/s3Uploader";
 import logger from "../../utils/logger";
 import type { GetUsersQuery } from "./user.validation";
 
 interface IUpdateUserRequest {
   fullName?: string;
+  profileImage?: string | null;
 }
-
-// Shared upload options — update here once to affect all profile image operations
-const PROFILE_IMAGE_OPTIONS = {
-  folder: "profiles",
-  resize: {
-    width: 400,
-    height: 400,
-    fit: "cover" as const,
-  },
-  quality: 85,
-};
 
 const getProfile = async (userId: string) => {
   const user = await prisma.user.findUnique({
@@ -47,11 +31,7 @@ const getProfile = async (userId: string) => {
   return user;
 };
 
-const updateProfile = async (
-  userId: string,
-  payload: IUpdateUserRequest,
-  file?: Express.Multer.File,
-) => {
+const updateProfile = async (userId: string, payload: IUpdateUserRequest) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, profileImage: true },
@@ -61,16 +41,29 @@ const updateProfile = async (
     throw new AppError(404, "User not found");
   }
 
-  const updateData: Record<string, unknown> = { ...payload };
+  const updateData: Record<string, unknown> = {};
 
-  // Handle profile image upload
-  if (file) {
-    const uploadedImage = await replaceImage(
-      user.profileImage,
-      file,
-      PROFILE_IMAGE_OPTIONS,
-    );
-    updateData.profileImage = uploadedImage.url;
+  if (payload.fullName !== undefined) {
+    updateData.fullName = payload.fullName;
+  }
+
+  // If a new profile image URL is supplied, clean up the old image from S3
+  if (
+    payload.profileImage !== undefined &&
+    payload.profileImage !== user.profileImage
+  ) {
+    if (user.profileImage) {
+      const oldKey = extractS3KeyFromUrl(user.profileImage);
+      if (oldKey) {
+        deleteImageFromS3(oldKey).catch((err) =>
+          logger.error("Failed to delete previous profile image from S3:", {
+            error: err,
+            oldKey,
+          }),
+        );
+      }
+    }
+    updateData.profileImage = payload.profileImage;
   }
 
   const updatedUser = await prisma.user.update({
@@ -119,43 +112,6 @@ const deleteProfileImage = async (userId: string) => {
   });
 
   return { message: "Profile image deleted successfully" };
-};
-
-const uploadProfileImage = async (
-  userId: string,
-  file: Express.Multer.File,
-) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, profileImage: true },
-  });
-
-  if (!user) {
-    throw new AppError(404, "User not found");
-  }
-
-  // Upload new image (and delete old one if exists)
-  const uploadedImage = await replaceImage(
-    user.profileImage,
-    file,
-    PROFILE_IMAGE_OPTIONS,
-  );
-
-  // Update database
-  const updatedUser = await prisma.user.update({
-    where: { id: userId },
-    data: { profileImage: uploadedImage.url },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      profileImage: true,
-      role: true,
-      status: true,
-    },
-  });
-
-  return updatedUser;
 };
 
 const getAllUsers = async (query: GetUsersQuery) => {
@@ -220,7 +176,7 @@ const deleteUser = async (userId: string) => {
   }
 
   // Soft delete — preserves data integrity and audit trail.
-  // Revoke all refresh tokens immediately so active sessions are terminated.
+  // Atomically update user status, clear dangling image, revoke tokens, and purge active OTPs.
   if (user.profileImage) {
     const imageKey = extractS3KeyFromUrl(user.profileImage);
     if (imageKey) {
@@ -232,13 +188,19 @@ const deleteUser = async (userId: string) => {
     }
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { status: UserStatus.DELETED },
-  });
-
-  // Revoke all refresh tokens for deleted user
-  await revokeAllUserRefreshTokens(userId);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { status: UserStatus.DELETED, profileImage: null },
+    }),
+    prisma.refreshToken.updateMany({
+      where: { userId, isRevoked: false },
+      data: { isRevoked: true },
+    }),
+    prisma.oTP.deleteMany({
+      where: { userId },
+    }),
+  ]);
 
   return { message: "User deleted successfully" };
 };
@@ -247,7 +209,6 @@ export const UserService = {
   getProfile,
   updateProfile,
   deleteProfileImage,
-  uploadProfileImage,
   getAllUsers,
   deleteUser,
 };

@@ -20,9 +20,10 @@ import logger from "../../utils/logger";
 
 const googleOAuthClient = new OAuth2Client();
 
-// Constant dummy bcrypt hash for equalizing timing when user is not found or has no password
+// Pre-computed valid bcrypt hash (cost 12) used only to equalize response time
+// when a user is not found, preventing user enumeration via timing differences.
 const DUMMY_HASH =
-  "$2b$12$e8xM4j7yDkUqD6qW0j6W..ZzZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ";
+  "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz31WeVOIuHYgFUoHtSRIR4pj7GXKPu";
 
 interface IGoogleUserPayload {
   email: string;
@@ -226,34 +227,28 @@ const verifyOTP = async (payload: { email: string; otp: string }) => {
 
   if (!otpRecord) throw new AppError(400, "Invalid or expired OTP");
 
-  // Mark this OTP as used
-  await prisma.oTP.update({
-    where: { id: otpRecord.id },
-    data: { isUsed: true },
-  });
-
-  // Invalidate any other unused SIGNUP OTPs (defense in depth)
-  await prisma.oTP.updateMany({
-    where: {
-      userId: user.id,
-      type: "SIGNUP",
-      id: { not: otpRecord.id },
-      isUsed: false,
-    },
-    data: { isUsed: true },
-  });
-
-  // Mark user as verified
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { isVerified: true },
-  });
+  // Atomically mark OTP used, invalidate all other signup OTPs, and mark user as verified in 1 DB transaction
+  await prisma.$transaction([
+    prisma.oTP.updateMany({
+      where: {
+        userId: user.id,
+        type: "SIGNUP",
+        isUsed: false,
+      },
+      data: { isUsed: true },
+    }),
+    prisma.user.update({
+      where: { id: user.id },
+      data: { isVerified: true },
+    }),
+  ]);
 
   // Issue Access Token & Persistent Refresh Token
   const accessToken = generateAccessToken({
     userId: user.id,
     email: user.email,
     role: user.role,
+    status: user.status,
   });
 
   const refreshToken = await generateRefreshToken(user.id);
@@ -286,7 +281,7 @@ const login = async (payload: { email: string; password: string }) => {
     },
   });
 
-  if (!user || !user.password) {
+  if (!user) {
     // Perform dummy compare to equalize response time and prevent user enumeration
     await comparePassword(payload.password, DUMMY_HASH);
     throw new AppError(401, "Invalid email or password");
@@ -295,7 +290,7 @@ const login = async (payload: { email: string; password: string }) => {
   checkAccountStatus(user.status);
 
   // Prevent Google OAuth users from logging in via Password Auth
-  if (user.authProvider === "GOOGLE") {
+  if (user.authProvider === "GOOGLE" || !user.password) {
     throw new AppError(
       400,
       "This account was created using Google Login. Please sign in using Google.",
@@ -312,6 +307,7 @@ const login = async (payload: { email: string; password: string }) => {
     userId: user.id,
     email: user.email,
     role: user.role,
+    status: user.status,
   });
 
   const refreshToken = await generateRefreshToken(user.id);
@@ -411,6 +407,7 @@ const googleLogin = async (payload: {
     userId: user.id,
     email: user.email,
     role: user.role,
+    status: user.status,
   });
 
   const refreshToken = await generateRefreshToken(user.id);
@@ -435,8 +432,19 @@ const forgotPassword = async (email: string) => {
     select: { id: true, status: true },
   });
 
-  if (!user) throw new AppError(404, "No account found with this email");
-  checkAccountStatus(user.status);
+  // OWASP: Always return a generic success message regardless of whether the
+  // email exists. This prevents user enumeration via differential responses.
+  if (!user || user.status === "DELETED") {
+    return {
+      message:
+        "If an account with this email exists, a password reset OTP has been sent.",
+      email,
+    };
+  }
+
+  if (user.status === "BLOCKED") {
+    throw new AppError(403, "Your account is suspended. Contact support.");
+  }
 
   const otp = generateOTP();
 
@@ -466,7 +474,8 @@ const forgotPassword = async (email: string) => {
   });
 
   return {
-    message: "Password reset OTP sent to your email",
+    message:
+      "If an account with this email exists, a password reset OTP has been sent.",
     email,
   };
 };
@@ -497,17 +506,11 @@ const verifyForgotPasswordOTP = async (payload: {
 
   if (!otpRecord) throw new AppError(400, "Invalid or expired OTP");
 
-  // Mark as used + invalidate others
-  await prisma.oTP.update({
-    where: { id: otpRecord.id },
-    data: { isUsed: true },
-  });
-
+  // Atomically mark this and all other pending forgot-password OTPs as used
   await prisma.oTP.updateMany({
     where: {
       userId: user.id,
       type: "FORGOT_PASSWORD",
-      id: { not: otpRecord.id },
       isUsed: false,
     },
     data: { isUsed: true },
@@ -540,21 +543,23 @@ const resetPassword = async (payload: {
 
   const hashed = await hashPassword(payload.newPassword);
 
-  await prisma.user.update({
-    where: { id: decoded.userId },
-    data: { password: hashed },
-  });
-
-  // OWASP Standard: Immediately invalidate all active user sessions on password reset
-  await revokeAllUserRefreshTokens(decoded.userId);
-
-  // Clean up all forgot-password OTPs
-  await prisma.oTP.deleteMany({
-    where: {
-      userId: decoded.userId,
-      type: "FORGOT_PASSWORD",
-    },
-  });
+  // Atomically update password, revoke all refresh tokens, and purge reset OTPs in 1 DB transaction
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: decoded.userId },
+      data: { password: hashed },
+    }),
+    prisma.refreshToken.updateMany({
+      where: { userId: decoded.userId, isRevoked: false },
+      data: { isRevoked: true },
+    }),
+    prisma.oTP.deleteMany({
+      where: {
+        userId: decoded.userId,
+        type: "FORGOT_PASSWORD",
+      },
+    }),
+  ]);
 
   return {
     message:
@@ -610,10 +615,26 @@ const resendOTP = async (email: string, type: OTPType) => {
     },
   });
 
-  if (!user) throw new AppError(404, "No account found with this email");
-  checkAccountStatus(user.status);
+  // OWASP: For FORGOT_PASSWORD flows, always return a generic response to
+  // prevent user enumeration. For SIGNUP, we can be explicit (email was
+  // already known to the caller since they just signed up).
+  if (type === "FORGOT_PASSWORD") {
+    if (!user || user.status === "DELETED") {
+      const context = "password reset";
+      return {
+        message: `New ${context} OTP sent to your email`,
+        email,
+      };
+    }
+    if (user.status === "BLOCKED") {
+      throw new AppError(403, "Your account is suspended. Contact support.");
+    }
+  } else {
+    if (!user) throw new AppError(404, "No account found with this email");
+    checkAccountStatus(user.status);
+  }
 
-  if (type === "SIGNUP" && user.isVerified) {
+  if (type === "SIGNUP" && user!.isVerified) {
     throw new AppError(400, "Your account is already verified");
   }
 
@@ -623,7 +644,7 @@ const resendOTP = async (email: string, type: OTPType) => {
   await prisma.$transaction([
     prisma.oTP.updateMany({
       where: {
-        userId: user.id,
+        userId: user!.id,
         type,
         isUsed: false,
       },
@@ -631,7 +652,7 @@ const resendOTP = async (email: string, type: OTPType) => {
     }),
     prisma.oTP.create({
       data: {
-        userId: user.id,
+        userId: user!.id,
         otp,
         type,
         expiresAt: new Date(Date.now() + config.otp_expiry_minutes * 60 * 1000),
@@ -661,10 +682,13 @@ const refreshAccessToken = async (refreshToken: string) => {
     throw new AppError(401, "Invalid or expired refresh token");
   }
 
-  // 2. Check if token exists in database and is valid
+  // 2. Check if token exists in database and is valid (precise select — no JOIN overhead)
   const tokenRecord = await prisma.refreshToken.findUnique({
     where: { id: decoded.tokenId },
-    include: {
+    select: {
+      id: true,
+      isRevoked: true,
+      expiresAt: true,
       user: {
         select: {
           id: true,
@@ -695,11 +719,12 @@ const refreshAccessToken = async (refreshToken: string) => {
   checkAccountStatus(user.status);
   if (!user.isVerified) throw new AppError(403, "Account not verified");
 
-  // 4. Generate new access token
+  // 4. Generate new access token (includes status so middleware stays stateless)
   const accessToken = generateAccessToken({
     userId: user.id,
     email: user.email,
     role: user.role,
+    status: user.status,
   });
 
   return {

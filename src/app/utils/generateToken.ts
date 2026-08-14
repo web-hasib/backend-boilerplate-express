@@ -6,6 +6,7 @@ interface IAccessTokenPayload {
   userId: string;
   email: string;
   role: string;
+  status: string;
 }
 
 interface IRefreshTokenPayload {

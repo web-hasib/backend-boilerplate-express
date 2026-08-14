@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+// Central reusable Email Validation Schema (Normalized & Sanitized)
+export const emailSchema = z
+  .string({ message: "Email is required" })
+  .trim()
+  .toLowerCase()
+  .email("Please enter a valid email address");
+
 // Central reusable Password Validation Schema (Bank-Grade Security)
 export const passwordSchema = z
   .string({ message: "Password is required" })
@@ -15,12 +22,8 @@ export const passwordSchema = z
 
 export const signupValidation = {
   body: z.object({
-    email: z
-      .string({ message: "Email is required" })
-      .email("Please enter a valid email address"),
-
+    email: emailSchema,
     password: passwordSchema,
-
     fullName: z
       .string({ message: "Full name is required" })
       .min(2, "Full name must be at least 2 characters")
@@ -31,10 +34,7 @@ export const signupValidation = {
 
 export const verifyOTPValidation = {
   body: z.object({
-    email: z
-      .string({ message: "Email is required" })
-      .email("Please enter a valid email address"),
-
+    email: emailSchema,
     otp: z
       .string({ message: "OTP code is required" })
       .length(4, "OTP must be exactly 4 digits")
@@ -44,10 +44,7 @@ export const verifyOTPValidation = {
 
 export const loginValidation = {
   body: z.object({
-    email: z
-      .string({ message: "Email is required" })
-      .email("Please enter a valid email address"),
-
+    email: emailSchema,
     password: z
       .string({ message: "Password is required" })
       .min(1, "Password cannot be empty"),
@@ -56,18 +53,13 @@ export const loginValidation = {
 
 export const forgotPasswordValidation = {
   body: z.object({
-    email: z
-      .string({ message: "Email is required" })
-      .email("Please enter a valid email address"),
+    email: emailSchema,
   }),
 };
 
 export const verifyForgotPasswordOTPValidation = {
   body: z.object({
-    email: z
-      .string({ message: "Email is required" })
-      .email("Please enter a valid email address"),
-
+    email: emailSchema,
     otp: z
       .string({ message: "OTP code is required" })
       .length(4, "OTP must be exactly 4 digits")
@@ -102,9 +94,7 @@ export const changePasswordValidation = {
 
 export const resendOTPValidation = {
   body: z.object({
-    email: z
-      .string({ message: "Email is required" })
-      .email("Please enter a valid email address"),
+    email: emailSchema,
   }),
 };
 

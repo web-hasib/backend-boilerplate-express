@@ -1,9 +1,9 @@
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import sharp from "sharp";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import http from "http";
@@ -28,115 +28,35 @@ const s3Client = new S3Client({
   }),
 });
 
-// Allowed image types
-const ALLOWED_IMAGE_TYPES = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-];
-
-// Max file size (5MB)
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-
-interface IUploadOptions {
-  folder?: string; // e.g., "profiles", "products", "posts"
-  resize?: {
-    width?: number;
-    height?: number;
-    fit?: "cover" | "contain" | "fill" | "inside" | "outside";
-  };
-  quality?: number; // 1-100
+export interface IPresignedUrlRequest {
+  filename: string;
+  contentType: string;
 }
 
-interface IUploadedFile {
-  key: string; // S3 object key
-  url: string; // Full S3 URL
-  bucket: string;
-  size: number;
-  mimetype: string;
+export interface IPresignedUrlResponse {
+  filename: string;
+  uploadUrl: string;
+  fileUrl: string;
+  key: string;
+  expiresIn: number;
 }
 
 /**
- * ⚡ Ultra-Fast Image Validation & Processing Pipeline.
- * Uses sequentialRead, fastShrinkOnLoad, and WebP effort: 0 for 5ms processing speed.
- */
-const processAndValidateImage = async (
-  file: Express.Multer.File,
-  options?: IUploadOptions,
-): Promise<Buffer> => {
-  if (!file || !file.buffer) {
-    throw new AppError(400, "No file buffer provided");
-  }
-
-  if (file.size > MAX_FILE_SIZE) {
-    throw new AppError(400, "File size exceeds 5MB limit");
-  }
-
-  // 1. Check HTTP header MIME type
-  if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-    throw new AppError(
-      400,
-      "Invalid file type. Only JPEG, PNG, and WebP are allowed",
-    );
-  }
-
-  // 2. Instant Magic Byte Header Signature Verification (0.01ms)
-  const buf = file.buffer;
-  const isJpeg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
-  const isPng =
-    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
-  const isWebp =
-    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46; // RIFF
-
-  if (!isJpeg && !isPng && !isWebp) {
-    throw new AppError(
-      400,
-      "Corrupted or invalid image buffer signature. Upload rejected.",
-    );
-  }
-
-  // 3. Ultra-Fast Sharp Pipeline (sequentialRead + effort 0 = 5ms speed)
-  try {
-    let pipeline = sharp(file.buffer, { sequentialRead: true }).rotate();
-
-    if (options?.resize) {
-      pipeline = pipeline.resize({
-        width: options.resize.width || 400,
-        height: options.resize.height || 400,
-        fit: options.resize.fit || "cover",
-        withoutEnlargement: true,
-        fastShrinkOnLoad: true, // ⚡ Fast decimation during JPEG/PNG decode
-      });
-    }
-
-    // ⚡ effort: 0 is the fastest possible WebP encoding speed in libwebp (~5ms)
-    return await pipeline
-      .webp({
-        quality: options?.quality || 75,
-        effort: 0, // Fastest encoding level
-        smartSubsample: false,
-      })
-      .toBuffer();
-  } catch (error: unknown) {
-    const err = error as Error;
-    throw new AppError(400, `Corrupted image file content: ${err.message}`);
-  }
-};
-
-/**
- * Generate unique S3 key
+ * Generate a unique S3 key preserving clean extension
  */
 const generateS3Key = (
   originalName: string,
-  folder?: string,
+  folder: string = "uploads",
 ): { key: string; filename: string } => {
   const timestamp = Date.now();
   const uuid = uuidv4().split("-")[0]; // Short UUID
-  const ext = "webp"; // Always use webp after processing
+
+  const extensionMatch = originalName.match(/\.([a-zA-Z0-9]+)$/);
+  const ext = extensionMatch ? extensionMatch[1].toLowerCase() : "bin";
+
   const sanitizedName = originalName
     .replace(/\.[^/.]+$/, "") // Remove extension
-    .replace(/[^a-zA-Z0-9]/g, "-") // Replace special chars
+    .replace(/[^a-zA-Z0-9_-]/g, "-") // Replace special chars with hyphen
     .toLowerCase()
     .substring(0, 30); // Limit length
 
@@ -147,76 +67,122 @@ const generateS3Key = (
 };
 
 /**
- * Upload single image to S3 (Sub-100ms Server Pipeline)
+ * ⚡ Generate a Single Presigned Upload URL for Direct-to-S3 Client Upload (Sub-15ms)
+ * Bypasses backend server memory/CPU completely.
  */
-export const uploadImageToS3 = async (
-  file: Express.Multer.File,
-  options?: IUploadOptions,
-): Promise<IUploadedFile> => {
+export const getPresignedUploadUrl = async (options: {
+  filename: string;
+  contentType: string;
+  folder?: string;
+  expiresIn?: number;
+}): Promise<IPresignedUrlResponse> => {
   if (!config.aws.s3_bucket_name) {
     throw new AppError(500, "AWS S3 bucket is not configured");
   }
 
+  const {
+    filename,
+    contentType,
+    folder = "uploads",
+    expiresIn = 900,
+  } = options;
+
   try {
-    // 1. Single-pass validation & image compression in memory (~5ms)
-    const processedBuffer = await processAndValidateImage(file, options);
+    const { key } = generateS3Key(filename, folder);
 
-    // 2. Generate S3 key & deterministic public URL
-    const { key } = generateS3Key(file.originalname, options?.folder);
-    const url = `https://${config.aws.s3_bucket_name}.s3.${config.aws.region}.amazonaws.com/${key}`;
-
-    // 3. Durable S3 Upload over persistent TCP pool (guarantees file persistence before returning)
     const command = new PutObjectCommand({
       Bucket: config.aws.s3_bucket_name,
       Key: key,
-      Body: processedBuffer,
-      ContentType: "image/webp",
-      ContentDisposition: "inline",
+      ContentType: contentType,
       CacheControl: "public, max-age=31536000, immutable",
     });
 
-    await s3Client.send(command);
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn });
+    const fileUrl = `https://${config.aws.s3_bucket_name}.s3.${config.aws.region}.amazonaws.com/${key}`;
 
-    // 4. Return URL to caller
     return {
+      filename,
+      uploadUrl,
+      fileUrl,
       key,
-      url,
-      bucket: config.aws.s3_bucket_name,
-      size: processedBuffer.length,
-      mimetype: "image/webp",
+      expiresIn,
     };
   } catch (error: unknown) {
-    if (error instanceof AppError) throw error;
     const err = error as Error;
-    throw new AppError(500, `Image upload failed: ${err.message}`);
+    throw new AppError(
+      500,
+      `Failed to generate presigned upload URL: ${err.message}`,
+    );
   }
 };
 
 /**
- * Upload multiple images to S3
+ * ⚡ Generate Multiple Presigned Upload URLs in Parallel (Batch Uploads)
+ * Allows client to upload 10, 20, or 50 files directly to S3 simultaneously.
  */
-export const uploadMultipleImagesToS3 = async (
-  files: Express.Multer.File[],
-  options?: IUploadOptions,
-): Promise<IUploadedFile[]> => {
-  if (!files || files.length === 0) {
-    throw new AppError(400, "No files provided");
+export const getMultiplePresignedUploadUrls = async (options: {
+  files: IPresignedUrlRequest[];
+  folder?: string;
+  expiresIn?: number;
+}): Promise<IPresignedUrlResponse[]> => {
+  if (!filesPresent(options.files)) {
+    throw new AppError(
+      400,
+      "At least one file is required for presigned upload URLs",
+    );
   }
 
-  const uploadPromises = files.map((file) => uploadImageToS3(file, options));
+  const { files, folder = "uploads", expiresIn = 900 } = options;
+
+  const promises = files.map((file) =>
+    getPresignedUploadUrl({
+      filename: file.filename,
+      contentType: file.contentType,
+      folder,
+      expiresIn,
+    }),
+  );
+
+  return Promise.all(promises);
+};
+
+const filesPresent = (
+  files?: IPresignedUrlRequest[],
+): files is IPresignedUrlRequest[] => {
+  return Array.isArray(files) && files.length > 0;
+};
+
+/**
+ * Extract S3 key from full public URL (automatically decodes URL-encoded characters)
+ */
+export const extractS3KeyFromUrl = (url: string): string | null => {
+  if (!url) return null;
 
   try {
-    return await Promise.all(uploadPromises);
-  } catch (error: unknown) {
-    const err = error as Error;
-    throw new AppError(500, `Multiple image upload failed: ${err.message}`);
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname.substring(1);
+
+    let key = pathname;
+    if (
+      urlObj.hostname.startsWith("s3.") ||
+      urlObj.hostname.startsWith("s3-")
+    ) {
+      const parts = pathname.split("/");
+      key = parts.slice(1).join("/");
+    }
+
+    return decodeURIComponent(key);
+  } catch {
+    return null;
   }
 };
 
 /**
- * Delete image from S3
+ * Delete single image/file from S3
  */
 export const deleteImageFromS3 = async (key: string): Promise<void> => {
+  if (!config.aws.s3_bucket_name || !key) return;
+
   try {
     const command = new DeleteObjectCommand({
       Bucket: config.aws.s3_bucket_name,
@@ -230,94 +196,34 @@ export const deleteImageFromS3 = async (key: string): Promise<void> => {
 };
 
 /**
- * Delete multiple images from S3
+ * ⚡ Delete multiple images/files from S3 in a single batch operation (DeleteObjectsCommand)
+ * Much faster than individual requests and respects the 1000-object S3 batch limit.
  */
 export const deleteMultipleImagesFromS3 = async (
   keys: string[],
 ): Promise<void> => {
-  const deletePromises = keys.map((key) => deleteImageFromS3(key));
-  await Promise.allSettled(deletePromises);
-};
+  const validKeys = keys.filter(Boolean);
+  if (!config.aws.s3_bucket_name || validKeys.length === 0) return;
 
-/**
- * Extract S3 key from full URL
- */
-export const extractS3KeyFromUrl = (url: string): string | null => {
-  if (!url) return null;
+  // S3 DeleteObjects supports up to 1000 objects per request
+  const CHUNK_SIZE = 1000;
+  for (let i = 0; i < validKeys.length; i += CHUNK_SIZE) {
+    const chunk = validKeys.slice(i, i + CHUNK_SIZE);
+    try {
+      const command = new DeleteObjectsCommand({
+        Bucket: config.aws.s3_bucket_name,
+        Delete: {
+          Objects: chunk.map((Key) => ({ Key })),
+          Quiet: true,
+        },
+      });
 
-  try {
-    const urlObj = new URL(url);
-    const pathname = urlObj.pathname.substring(1);
-
-    if (
-      urlObj.hostname.startsWith("s3.") ||
-      urlObj.hostname.startsWith("s3-")
-    ) {
-      const parts = pathname.split("/");
-      return parts.slice(1).join("/");
-    }
-
-    return pathname;
-  } catch {
-    return null;
-  }
-};
-
-/**
- * Generate Presigned Upload URL for Direct-to-S3 Client Uploads (15ms API response speed)
- * Bypasses backend binary file transfer completely!
- */
-export const getPresignedUploadUrl = async (
-  folder: string = "profiles",
-  contentType: string = "image/webp",
-): Promise<{ uploadUrl: string; fileUrl: string; key: string }> => {
-  if (!config.aws.s3_bucket_name) {
-    throw new AppError(500, "AWS S3 bucket is not configured");
-  }
-
-  try {
-    const timestamp = Date.now();
-    const uuid = uuidv4().split("-")[0];
-    const key = `${folder}/direct-${timestamp}-${uuid}.webp`;
-
-    const command = new PutObjectCommand({
-      Bucket: config.aws.s3_bucket_name,
-      Key: key,
-      ContentType: contentType,
-      CacheControl: "public, max-age=31536000, immutable",
-    });
-
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
-    const fileUrl = `https://${config.aws.s3_bucket_name}.s3.${config.aws.region}.amazonaws.com/${key}`;
-
-    return { uploadUrl, fileUrl, key };
-  } catch (error: unknown) {
-    const err = error as Error;
-    throw new AppError(
-      500,
-      `Failed to generate presigned upload URL: ${err.message}`,
-    );
-  }
-};
-
-/**
- * Replace existing image (delete old, upload new)
- */
-export const replaceImage = async (
-  oldUrl: string | null | undefined,
-  newFile: Express.Multer.File,
-  options?: IUploadOptions,
-): Promise<IUploadedFile> => {
-  const newImage = await uploadImageToS3(newFile, options);
-
-  if (oldUrl) {
-    const oldKey = extractS3KeyFromUrl(oldUrl);
-    if (oldKey) {
-      deleteImageFromS3(oldKey).catch((err) =>
-        logger.error("Failed to delete old image:", { error: err, oldKey }),
-      );
+      await s3Client.send(command);
+    } catch (error: unknown) {
+      logger.error("S3 batch delete error:", {
+        error,
+        keysCount: chunk.length,
+      });
     }
   }
-
-  return newImage;
 };
